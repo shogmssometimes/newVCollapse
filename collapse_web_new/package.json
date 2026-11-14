@@ -15,6 +15,7 @@
     "test:coverage": "vitest --run --coverage",
     "build:chud": "vite build --config vite.chud.config.ts && mv public/chud/chud.html public/chud/index.html",
     "build": "npm run build:chud && tsc -b && vite build",
+    "build:newv": "npm run build:chud && tsc -b && VITE_BASE_PATH=/newVCollapse/ vite build",
     "build:fancybuild": "tsc -b && vite build",
     "build:gm-local": "tsc -b && vite build --config vite.gm.config.ts",
     "preview": "vite preview"

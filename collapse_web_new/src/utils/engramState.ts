@@ -80,6 +80,22 @@ export function spendEngramCharges(storageKey: string, engramId: string, amount:
   writeEngramState(storageKey, { ...state, equipped })
 }
 
+/** HUD Engram queue's tap gesture: manually adds back 1 charge to an
+ * equipped Engram, capped at its copies (max charges). Unlike
+ * `restoreEngramCharge`, this isn't gated behind a Rest's restore budget —
+ * it's a quick manual adjustment the player can make at any time (e.g. to
+ * correct a charge count, or track charges recovered from Gear). No-op if
+ * the Engram isn't equipped or is already at max charges. */
+export function addEngramCharge(storageKey: string, engramId: string): void {
+  const state = readEngramState(storageKey)
+  const current = state.equipped[engramId]
+  if (!current || current.charges >= current.copies) return
+  writeEngramState(storageKey, {
+    ...state,
+    equipped: { ...state.equipped, [engramId]: { ...current, charges: current.charges + 1 } },
+  })
+}
+
 /** Short Rest "Restore Engrams": grants a restore budget the player then
  * spends (their choice of which Engram) via `restoreEngramCharge`. */
 export function grantEngramRestoreBudget(storageKey: string, amount: number): void {

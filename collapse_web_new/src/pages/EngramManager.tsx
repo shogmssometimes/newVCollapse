@@ -2,23 +2,22 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { DEFAULT_CORE, computeDerived } from "../domain/chudStats";
 import { loadState } from "../utils/chudPersistence";
 import { engramCatalog } from "../data/handbook/engramCatalog";
-import { rollEngramDice, type EngramRollResult } from "../domain/engrams";
 import {
   readEngramState,
   setEngramCopies,
-  spendEngramCharges,
   restoreEngramCharge,
   type EngramManagerState,
 } from "../utils/engramState";
-import HoldButton from "./deckBuilder/HoldButton";
+import { EngramBriefWidget } from "../chud/components/EngramBriefWidget";
 
 // Player-facing Engram Manager: spell-slot style — equip copies of an
-// Engram (capped by Capacity), spend charges to activate (rolling 1 die per
-// charge spent, like the handbook's "duplicate copies stack" rule), and
-// recover charges via a Short or Full Rest (handled by RestWidget, which
-// writes to this same storage key). Only one Engram can be the pending
-// selection at a time, but the player can freely change their mind (select
-// a different Engram, or deselect) before confirming the spend.
+// Engram (capped by Capacity), one row per Engram, spread however many
+// copies across however many different Engrams the player wants. Equipping
+// a copy locks it straight into the HUD's Engram queue — there's no
+// separate "select" step here; spending/recovering a charge day-to-day
+// happens from the queue widget (swipe to cycle, tap to top up a charge,
+// long-press to spend one), mirrored here at the top of the page as a live
+// preview of that same queue.
 export default function EngramManager({
   storageKey,
   chudStateStorageKey,
@@ -28,9 +27,6 @@ export default function EngramManager({
 }) {
   const [state, setState] = useState<EngramManagerState>(() => readEngramState(storageKey));
   const [core, setCore] = useState(() => loadState(chudStateStorageKey)?.core ?? DEFAULT_CORE);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [diceToSpend, setDiceToSpend] = useState(1);
-  const [lastRoll, setLastRoll] = useState<{ id: string; result: EngramRollResult } | null>(null);
 
   useEffect(() => {
     const handler = (e: StorageEvent) => {
@@ -62,9 +58,6 @@ export default function EngramManager({
   // silently re-clamp this; surface it instead (B6).
   const isOverCapacity = capacityUsed > capacity;
 
-  const selected = selectedId ? state.equipped[selectedId] : undefined;
-  const maxDice = selected ? Math.min(selected.copies, selected.charges) : 0;
-
   const changeCopies = useCallback(
     (id: string, level: number, delta: number) => {
       const current = state.equipped[id]?.copies ?? 0;
@@ -73,36 +66,9 @@ export default function EngramManager({
       if (delta > 0 && level * delta > capacityRemaining) return; // not enough Capacity left
       setEngramCopies(storageKey, id, next);
       refresh();
-      if (next <= 0 && selectedId === id) {
-        setSelectedId(null);
-      }
     },
-    [state.equipped, capacityRemaining, storageKey, refresh, selectedId]
+    [state.equipped, capacityRemaining, storageKey, refresh]
   );
-
-  const selectEngram = useCallback(
-    (id: string) => {
-      setLastRoll(null);
-      setDiceToSpend(1);
-      setSelectedId((prev) => (prev === id ? null : id));
-    },
-    []
-  );
-
-  const confirmSpend = useCallback(() => {
-    if (!selectedId || !selected) return;
-    const count = Math.max(1, Math.min(diceToSpend, maxDice));
-    const result = rollEngramDice(count);
-    spendEngramCharges(storageKey, selectedId, count);
-    setLastRoll({ id: selectedId, result });
-    if (count >= selected.charges) {
-      // No charges left to spend from — clear the pending selection instead
-      // of leaving a disabled "Selected" state lingering on screen.
-      setSelectedId(null);
-      setDiceToSpend(1);
-    }
-    refresh();
-  }, [selectedId, selected, diceToSpend, maxDice, storageKey, refresh]);
 
   const restoreBudget = state.pendingEngramRestoreBudget;
 
@@ -133,16 +99,19 @@ export default function EngramManager({
         )}
       </div>
 
+      <div className="engram-manager-queue-preview">
+        <EngramBriefWidget state={state} storageKey={storageKey} />
+      </div>
+
       <div className="engram-catalog-list">
         {engramCatalog.map((def) => {
           const equipped = state.equipped[def.id];
           const copies = equipped?.copies ?? 0;
           const charges = equipped?.charges ?? 0;
-          const isSelected = selectedId === def.id;
           const canAddCopy = def.level <= capacityRemaining;
           const canRestore = restoreBudget > 0 && copies > 0 && charges < copies;
           return (
-            <div key={def.id} className={`engram-row${isSelected ? " selected" : ""}`}>
+            <div key={def.id} className="engram-row">
               <div className="engram-row-main">
                 <div className="engram-row-title">
                   <span className="engram-name">{def.name}</span>
@@ -178,57 +147,14 @@ export default function EngramManager({
                         Restore
                       </button>
                     )}
-                    <button
-                      type="button"
-                      className="engram-select-btn"
-                      onClick={() => selectEngram(def.id)}
-                      disabled={charges <= 0}
-                      aria-pressed={isSelected}
-                    >
-                      {isSelected ? "Selected" : "Select"}
-                    </button>
                   </>
                 )}
               </div>
-              {lastRoll?.id === def.id && (
-                <div className="engram-roll-result" role="status">
-                  {lastRoll.result.dice.map((value, i) => (
-                    <span key={i} className="notification-die-chip" aria-label={`Rolled d4: ${value}`}>
-                      {value}
-                    </span>
-                  ))}
-                  <span className="engram-roll-total">Total {lastRoll.result.total}</span>
-                </div>
-              )}
             </div>
           );
         })}
       </div>
-
-      {selected && (
-        <div className="engram-spend-bar">
-          <div className="engram-spend-label">
-            Spending from <strong>{engramCatalog.find((e) => e.id === selectedId)?.name}</strong>
-          </div>
-          <div className="engram-spend-dice-stepper">
-            <button type="button" onClick={() => setDiceToSpend((n) => Math.max(1, n - 1))} disabled={diceToSpend <= 1}>
-              −
-            </button>
-            <span>{Math.min(diceToSpend, maxDice)} dice</span>
-            <button
-              type="button"
-              onClick={() => setDiceToSpend((n) => Math.min(maxDice, n + 1))}
-              disabled={diceToSpend >= maxDice}
-            >
-              +
-            </button>
-          </div>
-          <HoldButton label="Spend" onHold={confirmSpend} />
-          <button type="button" className="engram-cancel-btn" onClick={() => setSelectedId(null)}>
-            Cancel
-          </button>
-        </div>
-      )}
     </div>
   );
 }
+

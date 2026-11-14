@@ -462,6 +462,15 @@ button:hover {
   touch-action: none !important;
 }
 
+/* EngramBriefWidget's root div sets touch-action:none inline (it has no
+   stable class, just a `style` prop), but the Engram Manager page now
+   renders it directly in the main app bundle too (as a live queue preview),
+   where the global !important reset above still beats a plain (non-
+   !important) inline style. Target it via the wrapper's own class instead. */
+#root .engram-manager-queue-preview > div {
+  touch-action: none !important;
+}
+
 /* Prevent text selection and highlights globally in the app (use .selectable to opt back in) */
 html, body, #root, #root *:not(input):not(textarea):not([contenteditable]) {
   -webkit-user-select: none !important; /* iOS Safari */
@@ -2380,6 +2389,10 @@ button.hub-card:not(:disabled):active {
   padding: 6px 10px;
 }
 
+.engram-manager-queue-preview {
+  margin-bottom: 1rem;
+}
+
 .engram-restore-hint {
   font-weight: 700;
 }
@@ -2400,11 +2413,6 @@ button.hub-card:not(:disabled):active {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   padding: 10px 12px;
-}
-
-.engram-row.selected {
-  border-color: #ffd43b;
-  background: rgba(255, 212, 59, 0.08);
 }
 
 .engram-row-main {
@@ -2469,9 +2477,7 @@ button.hub-card:not(:disabled):active {
   color: rgba(248, 250, 252, 0.7);
 }
 
-.engram-restore-btn,
-.engram-select-btn,
-.engram-cancel-btn {
+.engram-restore-btn {
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.06);
@@ -2479,42 +2485,4 @@ button.hub-card:not(:disabled):active {
   padding: 4px 10px;
   font: inherit;
   cursor: pointer;
-}
-
-.engram-select-btn[aria-pressed="true"] {
-  border-color: #ffd43b;
-  background: rgba(255, 212, 59, 0.16);
-}
-
-.engram-roll-result {
-  flex-basis: 100%;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-.engram-roll-total {
-  font-weight: 700;
-  color: #f8fafc;
-}
-
-.engram-spend-bar {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 1rem;
-  padding: 10px 12px;
-  background: rgba(10, 12, 16, 0.92);
-  border: 1px solid rgba(255, 212, 59, 0.4);
-  border-radius: 10px;
-}
-
-.engram-spend-dice-stepper {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }

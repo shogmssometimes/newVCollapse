@@ -21,6 +21,7 @@ export type NotificationKind =
   | "short-rest-hp"
   | "short-rest-engrams"
   | "full-rest"
+  | "engram-spent"
   | "margin-wound"
   | "margin-fumble";
 

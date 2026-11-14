@@ -1,12 +1,16 @@
 import { useRef, useState } from "react";
 import { engramCatalogById } from "../../data/handbook/engramCatalog";
-import { readEngramState, spendEngramCharges, type EngramManagerState } from "../../utils/engramState";
+import { addEngramCharge, spendEngramCharges, type EngramManagerState } from "../../utils/engramState";
 import { STANDARD_LONG_PRESS_MS } from "../../utils/gestureConstants";
+import { pushNotification } from "../../domain/notifications";
 
-// Swipeable Engram summary widget — mirrors GearBriefWidget's layout and
-// gesture (swipe to cycle, long-press to spend one charge of the active
-// Engram), but reads from the Engram Manager's equipped/charges state
-// instead of the Gear inventory.
+const SWIPE_THRESHOLD_PX = 30;
+
+// Swipeable Engram queue widget — mirrors GearBriefWidget's layout, but with
+// its own gesture set: swipe left/right to cycle through every *equipped*
+// Engram (not just ones with charges left), a tap adds back one charge
+// (manual stack top-up), and a long-press spends one charge and fires an
+// "Engram spent" notification.
 export function EngramBriefWidget({
   state,
   storageKey,
@@ -17,15 +21,18 @@ export function EngramBriefWidget({
   const [idx, setIdx] = useState(0);
   const [holdProgress, setHoldProgress] = useState(0); // 0–100
   const [flashOut, setFlashOut] = useState(false);
+  const [flashIn, setFlashIn] = useState(false);
   const touchStartX = useRef<number | null>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const isHolding = useRef(false);
   const holdFired = useRef(false);
 
-  // only show equipped Engrams with charges remaining
+  // Show every equipped Engram (copies > 0), regardless of current charge
+  // count — a depleted Engram still needs to appear so its charge can be
+  // topped back up with a tap.
   const activeEntries = Object.entries(state.equipped)
-    .filter(([, e]) => e.charges > 0)
+    .filter(([, e]) => e.copies > 0)
     .map(([id, e]) => ({ id, ...e, name: engramCatalogById[id]?.name ?? id }));
   const activeCount = activeEntries.length;
 
@@ -36,10 +43,11 @@ export function EngramBriefWidget({
 
   const entry = activeCount > 0 ? (activeEntries[safeIdx] ?? null) : null;
   const nameText = entry?.name.trim() || '—';
-  const chargesText = entry ? String(entry.charges) : '0';
+  const chargesText = entry ? `${entry.charges}/${entry.copies}` : '0';
   const hasContent = !!entry;
 
-  const canUse = entry !== null && entry.charges > 0;
+  const canSpend = entry !== null && entry.charges > 0;
+  const canAdd = entry !== null && entry.charges < entry.copies;
 
   const cancelHold = () => {
     if (holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current = null; }
@@ -49,7 +57,7 @@ export function EngramBriefWidget({
   };
 
   const startHold = () => {
-    if (!canUse || !entry) return;
+    if (!canSpend || !entry) return;
     isHolding.current = true;
     const start = Date.now();
     holdInterval.current = setInterval(() => {
@@ -59,6 +67,7 @@ export function EngramBriefWidget({
       holdFired.current = true;
       cancelHold();
       spendEngramCharges(storageKey, entry.id, 1);
+      pushNotification("engram-spent", "Engram Spent", `${entry.name} — 1 charge spent.`, {});
       setFlashOut(true);
       setTimeout(() => setFlashOut(false), 600);
     }, STANDARD_LONG_PRESS_MS);
@@ -75,6 +84,8 @@ export function EngramBriefWidget({
     ? `0 0 ${8 + 24 * holdGlow}px rgba(${accentR},${accentG},${accentB},${0.15 + 0.55 * holdGlow})`
     : flashOut
     ? `0 0 28px rgba(${accentR},${accentG},${accentB},0.6)`
+    : flashIn
+    ? '0 0 28px rgba(120,220,140,0.6)'
     : 'none';
 
   if (activeCount === 0) {
@@ -113,7 +124,7 @@ export function EngramBriefWidget({
             textAlign: "center",
           }}
         >
-          no charges
+          no engrams
         </span>
       </div>
     );
@@ -134,7 +145,7 @@ export function EngramBriefWidget({
         userSelect: 'none',
         WebkitUserSelect: 'none',
         touchAction: 'none',
-        cursor: canUse ? 'pointer' : 'default',
+        cursor: canSpend || canAdd ? 'pointer' : 'default',
         boxShadow,
         transition: holdProgress > 0 ? 'none' : 'background 0.3s, border-color 0.4s, box-shadow 0.4s',
       }}
@@ -148,10 +159,21 @@ export function EngramBriefWidget({
         const fired = holdFired.current;
         cancelHold();
         holdFired.current = false;
-        if (!fired && Math.abs(dx) <= 30) {
-          next();
-        }
         touchStartX.current = null;
+        if (fired) return;
+        if (Math.abs(dx) > SWIPE_THRESHOLD_PX) {
+          // Swipe left reveals the next Engram (drag finger left), swipe
+          // right goes back to the previous one — same direction mapping
+          // as a photo-gallery carousel.
+          if (dx < 0) next(); else prev();
+          return;
+        }
+        // A tap (no drag, no hold) tops up one charge of the Engram on screen.
+        if (entry && canAdd) {
+          addEngramCharge(storageKey, entry.id);
+          setFlashIn(true);
+          setTimeout(() => setFlashIn(false), 300);
+        }
       }}
       onPointerLeave={() => { cancelHold(); touchStartX.current = null; }}
       onPointerCancel={() => { cancelHold(); touchStartX.current = null; }}
@@ -200,7 +222,7 @@ export function EngramBriefWidget({
               flexShrink: 0,
             }}
           >
-            ×{chargesText}
+            {chargesText}
           </span>
         )}
       </div>

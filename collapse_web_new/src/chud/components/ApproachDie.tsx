@@ -18,12 +18,15 @@ const VIBRATE_PIP_MS = 14
 const FLING_DURATION_MS = 220
 // Long-press (not a tap) to double a die — a plain tap on a die that's
 // already doubled cancels it instead (see handleDieClick).
-const DIE_LONG_PRESS_MS = 420
+const DIE_LONG_PRESS_MS = 210
 // How long the Method's name box must be held before it's "armed" and
 // ready to roll. Once armed, moving the pointer past METHOD_SWIPE_PX in
-// any direction fires the roll; moving that far *before* arming instead
-// cancels the hold (reads as an accidental drag, not a deliberate press).
-const METHOD_ARM_MS = 350
+// any direction marks the roll as "pending" — it only actually fires when
+// the pointer is released while still past that distance; pulling back
+// under the threshold before releasing cancels the pending roll instead.
+// Moving that far *before* arming instead cancels the hold outright (reads
+// as an accidental drag, not a deliberate press).
+const METHOD_ARM_MS = 175
 const METHOD_PRE_ARM_CANCEL_PX = 8
 const METHOD_SWIPE_PX = 10
 // Picking up a rolled die (post-result) reuses the same long-press-then-
@@ -108,6 +111,11 @@ export function ApproachDie({
   const [rolling, setRolling] = useState(false)
   const [armed, setArmed] = useState(false)
   const [chargeProgress, setChargeProgress] = useState(0) // 0-100, grows from the instant of press, independent of `armed`
+  // True once armed AND the pointer has moved past METHOD_SWIPE_PX — the
+  // roll doesn't fire yet, this only drives the "ready to release" visual;
+  // pulling back under the threshold before releasing clears it again with
+  // no action taken, and only releasing while it's true actually rolls.
+  const [pendingRoll, setPendingRoll] = useState(false)
   const [rollingPreview, setRollingPreview] = useState<number[]>([])
   const [pressingDieIndex, setPressingDieIndex] = useState<number | null>(null)
   const [armedDieIndex, setArmedDieIndex] = useState<number | null>(null)
@@ -135,6 +143,7 @@ export function ApproachDie({
   const armTimer = useRef<number | null>(null)
   const chargeInterval = useRef<number | null>(null)
   const armedRef = useRef(false)
+  const pendingRollRef = useRef(false)
   const gestureStart = useRef<{ x: number; y: number } | null>(null)
   const rolledThisGesture = useRef(false)
   const resolvedRef = useRef(false)
@@ -142,6 +151,8 @@ export function ApproachDie({
   const dieSuppressClick = useRef(false)
   const dieGestureStart = useRef<{ x: number; y: number } | null>(null)
   const dieSwipedThisGesture = useRef(false)
+  const dieSwipeDirRef = useRef<"up" | "down" | "left" | "right" | null>(null)
+  const [dieSwipeDir, setDieSwipeDir] = useState<"up" | "down" | "left" | "right" | null>(null)
   const boxRef = useRef<HTMLDivElement>(null)
   const popupRef = useRef<HTMLDivElement>(null)
 
@@ -290,6 +301,8 @@ export function ApproachDie({
     armedRef.current = false
     setArmed(false)
     setChargeProgress(0)
+    pendingRollRef.current = false
+    setPendingRoll(false)
     gestureStart.current = null
   }
 
@@ -336,16 +349,25 @@ export function ApproachDie({
       if (dist > METHOD_PRE_ARM_CANCEL_PX) cancelGesture()
       return
     }
-    if (dist > METHOD_SWIPE_PX) {
-      rolledThisGesture.current = true
-      cancelGesture()
-      vibrate(VIBRATE_PIP_MS * 2)
-      rollPool(poolMax)
+    // Past this point the roll is only *pending* — nothing fires until
+    // release. Pulling back under the threshold clears the pending state
+    // again (no action), matching "incomplete gesture does nothing".
+    const nowPending = dist > METHOD_SWIPE_PX
+    if (nowPending !== pendingRollRef.current) {
+      pendingRollRef.current = nowPending
+      setPendingRoll(nowPending)
+      if (nowPending) vibrate(VIBRATE_PIP_MS)
     }
   }
 
   const handlePointerUp = () => {
+    const shouldRoll = armedRef.current && pendingRollRef.current && !rolledThisGesture.current
     cancelGesture()
+    if (shouldRoll) {
+      rolledThisGesture.current = true
+      vibrate(VIBRATE_PIP_MS * 2)
+      rollPool(poolMax)
+    }
   }
 
   const handlePointerCancel = () => {
@@ -408,6 +430,8 @@ export function ApproachDie({
     setPressingDieIndex(null)
     setArmedDieIndex(null)
     dieGestureStart.current = null
+    dieSwipeDirRef.current = null
+    setDieSwipeDir(null)
   }
 
   const sendToSet = (total: number) => {
@@ -431,7 +455,8 @@ export function ApproachDie({
   const handleDiePointerDown = (index: number, event: React.PointerEvent<HTMLButtonElement>) => {
     if (resolvedRef.current) return
     dieSuppressClick.current = false
-    dieSwipedThisGesture.current = false
+    dieSwipeDirRef.current = null
+    setDieSwipeDir(null)
     dieGestureStart.current = { x: event.clientX, y: event.clientY }
     try {
       event.currentTarget.setPointerCapture(event.pointerId)
@@ -449,8 +474,14 @@ export function ApproachDie({
     }, DIE_LONG_PRESS_MS)
   }
 
+  // Tracks which direction the current swipe *would* commit to if the
+  // pointer were released right now — nothing actually fires here. Only
+  // once armed does a direction register at all; pulling back under
+  // DIE_SWIPE_PX clears it again (no pending direction = release does
+  // nothing), same "incomplete gesture does nothing" rule as everywhere
+  // else in this component.
   const handleDiePointerMove = (index: number, event: React.PointerEvent<HTMLButtonElement>) => {
-    if (dieSwipedThisGesture.current || !dieGestureStart.current) return
+    if (!dieGestureStart.current) return
     const dx = event.clientX - dieGestureStart.current.x
     const dy = event.clientY - dieGestureStart.current.y
     const dist = Math.hypot(dx, dy)
@@ -460,18 +491,38 @@ export function ApproachDie({
       if (dist > DIE_PRE_ARM_CANCEL_PX) cancelDiePress()
       return
     }
-    if (dist <= DIE_SWIPE_PX) return
-    dieSwipedThisGesture.current = true
+    const dir =
+      dist <= DIE_SWIPE_PX
+        ? null
+        : Math.abs(dy) > Math.abs(dx)
+        ? dy < 0
+          ? "up"
+          : "down"
+        : dx > 0
+        ? "right"
+        : "left"
+    if (dir !== dieSwipeDirRef.current) {
+      dieSwipeDirRef.current = dir
+      setDieSwipeDir(dir)
+      if (dir) vibrate(VIBRATE_PIP_MS)
+    }
+  }
+
+  // Only here, on release, does the pending direction (if any) actually
+  // commit — matching the rest of the app's "hold and swipe, release to
+  // fire" shape instead of committing mid-drag.
+  const handleDiePointerUp = (index: number) => {
+    const dir = armedDieIndex === index ? dieSwipeDirRef.current : null
+    cancelDiePress()
+    if (!dir) return
     vibrate(VIBRATE_PIP_MS * 2)
-    if (Math.abs(dy) > Math.abs(dx)) {
-      if (dy < 0) {
-        setDieFling({ index, dir: "up" }) // swipe up: Doubled
-        flingTimer.current = window.setTimeout(() => { addOverload(index); setDieFling(null) }, FLING_DURATION_MS)
-      } else {
-        setDieFling({ index, dir: "down" }) // swipe down: Send to Set
-        flingTimer.current = window.setTimeout(() => { sendToSet(displayTotal); setDieFling(null) }, FLING_DURATION_MS)
-      }
-    } else if (dx > 0) {
+    if (dir === "up") {
+      setDieFling({ index, dir: "up" }) // swipe up: Doubled
+      flingTimer.current = window.setTimeout(() => { addOverload(index); setDieFling(null) }, FLING_DURATION_MS)
+    } else if (dir === "down") {
+      setDieFling({ index, dir: "down" }) // swipe down: Send to Set
+      flingTimer.current = window.setTimeout(() => { sendToSet(displayTotal); setDieFling(null) }, FLING_DURATION_MS)
+    } else if (dir === "right") {
       setDieFling({ index, dir: "right" }) // swipe right: Create Margin
       flingTimer.current = window.setTimeout(() => { startMargin(displayTotal); setDieFling(null) }, FLING_DURATION_MS)
     } else {
@@ -480,7 +531,6 @@ export function ApproachDie({
       setDieFling({ index, dir: "left" })
       flingTimer.current = window.setTimeout(() => setDieFling(null), FLING_DURATION_MS)
     }
-    setArmedDieIndex(null)
   }
 
   const handleDieClick = (index: number) => {
@@ -585,20 +635,21 @@ export function ApproachDie({
         type="button"
         className="method-row-roll"
         aria-label={`${label}, ${available} of ${baseRating} base dice available${wardrobeBonus > 0 ? `, plus ${wardrobeAvail} of ${wardrobeBonus} from Wardrobe` : ""}. ${rollHint}.`}
-        style={
-          !armed && chargeProgress > 0
-            ? {
-                borderColor: `rgba(255,212,59,${0.18 + 0.5 * (chargeProgress / 100)})`,
-                boxShadow: `0 0 ${4 + 14 * (chargeProgress / 100)}px rgba(255,212,59,${0.1 + 0.35 * (chargeProgress / 100)})`,
-              }
-            : undefined
-        }
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         onContextMenu={(event) => event.preventDefault()}
       >
+        <span
+          className={`rising-progress-fill${chargeProgress > 0 ? " active" : ""}${pendingRoll ? " ready" : ""}`}
+          style={
+            !pendingRoll && chargeProgress > 0
+              ? { opacity: (chargeProgress / 100) * 0.85, transform: `translateY(${18 - (chargeProgress / 100) * 48}%)` }
+              : undefined
+          }
+          aria-hidden="true"
+        />
         <span className="method-row-name">{label}</span>
       </button>
 
@@ -743,7 +794,7 @@ export function ApproachDie({
                       disabled={fling !== null}
                       onPointerDown={(event) => { event.stopPropagation(); handleDiePointerDown(index, event) }}
                       onPointerMove={(event) => { event.stopPropagation(); handleDiePointerMove(index, event) }}
-                      onPointerUp={(event) => { event.stopPropagation(); cancelDiePress() }}
+                      onPointerUp={(event) => { event.stopPropagation(); handleDiePointerUp(index) }}
                       onPointerLeave={cancelDiePress}
                       onPointerCancel={cancelDiePress}
                       onContextMenu={(event) => event.preventDefault()}
@@ -757,7 +808,10 @@ export function ApproachDie({
                           : "Hold, then swipe: up Doubles, down sends to Set, right starts Margin, left cancels"
                       }
                     >
-                      <span className={`hold-progress-fill${isPressing ? " active" : ""}`} aria-hidden="true" />
+                      <span
+                        className={`rising-progress-fill${isPressing ? " timed active" : ""}${isArmed ? " active" : ""}${isArmed && dieSwipeDir ? " ready" : ""}`}
+                        aria-hidden="true"
+                      />
                       {dieRoll.rolls[0]}
                       {pendingOverload.has(index) && <span className="approach-die-chip-doubled">DOUBLED</span>}
                     </button>

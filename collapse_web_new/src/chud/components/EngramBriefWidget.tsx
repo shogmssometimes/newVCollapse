@@ -2,15 +2,14 @@ import { useRef, useState } from "react";
 import { engramCatalogById } from "../../data/handbook/engramCatalog";
 import { addEngramCharge, spendEngramCharges, type EngramManagerState } from "../../utils/engramState";
 import { STANDARD_LONG_PRESS_MS } from "../../utils/gestureConstants";
-import { pushNotification } from "../../domain/notifications";
 
 const SWIPE_THRESHOLD_PX = 30;
 
 // Swipeable Engram queue widget — mirrors GearBriefWidget's layout, but with
 // its own gesture set: swipe left/right to cycle through every *equipped*
-// Engram (not just ones with charges left), a tap adds back one charge
-// (manual stack top-up), and a long-press spends one charge and fires an
-// "Engram spent" notification.
+// Engram (not just ones with charges left); a tap adds back one charge
+// (manual stack top-up), cycling back to 0 if it's already at max; a
+// long-press opens an info popup for the Engram on screen.
 export function EngramBriefWidget({
   state,
   storageKey,
@@ -20,8 +19,8 @@ export function EngramBriefWidget({
 }) {
   const [idx, setIdx] = useState(0);
   const [holdProgress, setHoldProgress] = useState(0); // 0–100
-  const [flashOut, setFlashOut] = useState(false);
   const [flashIn, setFlashIn] = useState(false);
+  const [popupEntry, setPopupEntry] = useState<{ id: string; name: string } | null>(null);
   const touchStartX = useRef<number | null>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -46,9 +45,6 @@ export function EngramBriefWidget({
   const chargesText = entry ? `${entry.charges}/${entry.copies}` : '0';
   const hasContent = !!entry;
 
-  const canSpend = entry !== null && entry.charges > 0;
-  const canAdd = entry !== null && entry.charges < entry.copies;
-
   const cancelHold = () => {
     if (holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current = null; }
     if (holdInterval.current) { clearInterval(holdInterval.current); holdInterval.current = null; }
@@ -57,7 +53,7 @@ export function EngramBriefWidget({
   };
 
   const startHold = () => {
-    if (!canSpend || !entry) return;
+    if (!entry) return;
     isHolding.current = true;
     const start = Date.now();
     holdInterval.current = setInterval(() => {
@@ -66,10 +62,7 @@ export function EngramBriefWidget({
     holdTimer.current = setTimeout(() => {
       holdFired.current = true;
       cancelHold();
-      spendEngramCharges(storageKey, entry.id, 1);
-      pushNotification("engram-spent", "Engram Spent", `${entry.name} — 1 charge spent.`, {});
-      setFlashOut(true);
-      setTimeout(() => setFlashOut(false), 600);
+      setPopupEntry({ id: entry.id, name: entry.name });
     }, STANDARD_LONG_PRESS_MS);
   };
 
@@ -82,8 +75,6 @@ export function EngramBriefWidget({
     : 'rgba(255,255,255,0.1)';
   const boxShadow = holdProgress > 0
     ? `0 0 ${8 + 24 * holdGlow}px rgba(${accentR},${accentG},${accentB},${0.15 + 0.55 * holdGlow})`
-    : flashOut
-    ? `0 0 28px rgba(${accentR},${accentG},${accentB},0.6)`
     : flashIn
     ? '0 0 28px rgba(120,220,140,0.6)'
     : 'none';
@@ -145,7 +136,7 @@ export function EngramBriefWidget({
         userSelect: 'none',
         WebkitUserSelect: 'none',
         touchAction: 'none',
-        cursor: canSpend || canAdd ? 'pointer' : 'default',
+        cursor: entry ? 'pointer' : 'default',
         boxShadow,
         transition: holdProgress > 0 ? 'none' : 'background 0.3s, border-color 0.4s, box-shadow 0.4s',
       }}
@@ -168,9 +159,14 @@ export function EngramBriefWidget({
           if (dx < 0) next(); else prev();
           return;
         }
-        // A tap (no drag, no hold) tops up one charge of the Engram on screen.
-        if (entry && canAdd) {
-          addEngramCharge(storageKey, entry.id);
+        // A tap (no drag, no hold) adds one charge; at max, a tap cycles
+        // back down to 0 instead of being a no-op.
+        if (entry) {
+          if (entry.charges < entry.copies) {
+            addEngramCharge(storageKey, entry.id);
+          } else if (entry.charges > 0) {
+            spendEngramCharges(storageKey, entry.id, entry.charges);
+          }
           setFlashIn(true);
           setTimeout(() => setFlashIn(false), 300);
         }
@@ -244,6 +240,51 @@ export function EngramBriefWidget({
           {safeIdx + 1} / {activeCount}
         </span>
       </div>
+      {popupEntry && (
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Close"
+          onPointerDown={e => { e.stopPropagation(); setPopupEntry(null); }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 500,
+            background: 'rgba(5,8,14,0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            onPointerDown={e => e.stopPropagation()}
+            style={{
+              background: 'rgba(10,16,28,0.97)',
+              border: '1px solid rgba(15,246,255,0.3)',
+              borderRadius: 10,
+              padding: '16px 20px',
+              minWidth: 220,
+              maxWidth: '80vw',
+              boxShadow: '0 0 28px rgba(15,246,255,0.2)',
+            }}
+          >
+            <div
+              style={{
+                fontSize: '0.7rem',
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: 'var(--accent, #0ff6ff)',
+                marginBottom: 8,
+              }}
+            >
+              {popupEntry.name}
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'rgba(248,250,252,0.5)', fontStyle: 'italic' }}>
+              Nothing here yet.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -368,6 +368,9 @@
 }
 
 .aag-page2 .core-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
   align-items: center;
   text-align: center;
   border-radius: 6px;
@@ -397,8 +400,10 @@
   border-color: #ff5c5c;
 }
 
+/* Swipe-up ("open Distribution") feedback now comes from the
+   .rising-progress-fill child below instead of a pulsing glow — this
+   class just tints the border. */
 .aag-page2 .core-card.tap-pending-open {
-  animation: core-card-tap-pending-open 480ms ease-in-out infinite;
   border-color: #ffd43b;
 }
 
@@ -407,9 +412,34 @@
   50% { box-shadow: 0 0 14px 2px rgba(255, 92, 92, 0.5); }
 }
 
-@keyframes core-card-tap-pending-open {
-  0%, 100% { box-shadow: 0 0 0 rgba(255, 212, 59, 0); }
-  50% { box-shadow: 0 0 14px 2px rgba(255, 212, 59, 0.45); }
+/* Rising charge/swipe effect, mirroring chud.css's .rising-progress-fill —
+   a soft glow that floats upward and fades in as a hold-then-swipe or
+   swipe-up gesture progresses, replacing the old progress-bar/pulse
+   feedback. See chud.css for the full rationale. */
+.aag-page2 .rising-progress-fill {
+  position: absolute;
+  left: 14%;
+  right: 14%;
+  bottom: 0;
+  height: 70%;
+  background: radial-gradient(ellipse at 50% 100%, rgba(255, 212, 59, 0.5), rgba(255, 212, 59, 0) 72%);
+  opacity: 0;
+  transform: translateY(18%);
+  z-index: 0;
+  pointer-events: none;
+  transition: opacity 70ms linear, transform 70ms linear;
+}
+.aag-page2 .rising-progress-fill.active {
+  opacity: 0.85;
+  transform: translateY(-30%);
+}
+.aag-page2 .rising-progress-fill.ready {
+  opacity: 1;
+  transform: translateY(-32%);
+  background: radial-gradient(ellipse at 50% 100%, rgba(15, 246, 255, 0.6), rgba(15, 246, 255, 0) 72%);
+}
+.aag-page2 .rising-progress-fill.timed {
+  transition: opacity var(--hold-progress-ms, 300ms) linear, transform var(--hold-progress-ms, 300ms) linear;
 }
 
 .aag-page2 .core-card.tap-flash-add {
@@ -431,6 +461,8 @@
 }
 
 .aag-page2 .core-label {
+  position: relative;
+  z-index: 1;
   font-size: 0.7rem;
   font-family: var(--font-display);
   font-weight: 400;
@@ -440,6 +472,8 @@
 }
 
 .aag-page2 .core-controls {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -646,4 +680,110 @@
   min-width: 1.2em;
   text-align: center;
   font-weight: 700;
+}
+
+/* Readiness long-press roll popup — mirrors the cHUD's Method-roll popup
+   (.approach-die-popup / .approach-die-chip in chud.css) so the two dice
+   engines read as the same visual system, even though ApproachDie.tsx
+   itself isn't used on this page. */
+.aag-page2 .approach-die-popup {
+  position: fixed;
+  z-index: 200;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 260px;
+  max-width: min(88vw, 420px);
+  padding: 32px 36px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(10, 10, 14, 0.96);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  animation: aag-approach-die-popup-in 120ms ease;
+  font-family: var(--font-display, 'Bebas Neue', Impact, 'Arial Narrow', sans-serif);
+}
+
+.aag-page2 .approach-die-popup-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(248, 250, 252, 0.8);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.aag-page2 .approach-die-popup-label {
+  font-size: 1.2rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(248, 250, 252, 0.65);
+}
+
+@keyframes aag-approach-die-rolling-tick {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.85; }
+}
+
+.aag-page2 .approach-die-popup-die {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  font-size: 1.1rem;
+  color: rgba(248, 250, 252, 0.65);
+  text-align: center;
+  max-width: 100%;
+  min-width: 236px;
+}
+
+.aag-page2 .approach-die-chip {
+  position: relative;
+  overflow: hidden;
+  font: inherit;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 700;
+  cursor: default;
+}
+
+.aag-page2 .approach-die-chip.rolling {
+  color: rgba(248, 250, 252, 0.5);
+  animation: aag-approach-die-rolling-tick 60ms linear infinite;
+}
+
+.aag-page2 .approach-die-chip.top {
+  background: rgba(15, 246, 255, 0.12);
+  border-color: #0ff6ff;
+  color: #f8fafc;
+}
+
+.aag-page2 .approach-die-popup-swipe-hint {
+  margin-top: 6px;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  color: rgba(248, 250, 252, 0.4);
+  text-align: center;
+}
+
+@keyframes aag-approach-die-popup-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.92); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }

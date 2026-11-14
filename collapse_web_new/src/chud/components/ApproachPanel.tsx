@@ -17,12 +17,14 @@ const _hideUnusedMethodsKey = (() => {
 })();
 
 const GANBARE_METHOD_ORDER: Array<keyof ApproachStats> = ["force", "finesse", "guts", "logic", "show", "tell"];
-// 8 taps shatters the glass cover (1 restore fires on the 8th tap); it
-// cracks visibly every 2 taps. Breaking it fires the gift once and the
-// cover reforms immediately — ready for another full 8-tap break next
-// time. The "shattered" look is a brief cosmetic flash, not a usable state.
-const GANBARE_TAPS_TO_BREAK = 8;
-const GANBARE_SHATTER_FLASH_MS = 450;
+// 6 taps unlocks the frosted glass cover — it cracks visibly every 1-2
+// taps. Unlocking doesn't fire the gift by itself: it uncovers the
+// Ganbare! button, which then glows until *either* it's tapped (firing
+// the gift and instantly re-covering) or GANBARE_UNLOCKED_TIMEOUT_MS
+// passes with no tap (the cover silently reforms, nothing fires).
+const GANBARE_TAPS_TO_UNLOCK = 6;
+const GANBARE_UNLOCKED_TIMEOUT_MS = 60_000;
+const GANBARE_FIRED_FLASH_MS = 450;
 // Deadzone/commit distances (px) for the Method header's horizontal
 // hide-0s swipe — same two-stage "pending, then commit" pattern used by
 // every other swipe in the app.
@@ -33,53 +35,66 @@ const HEADER_SWIPE_COMMIT_PX = 40;
 // Ganbare! Charges to return one of your Overloaded dice to its Method
 // pool ("or until a friend gives you Ganbare! for it"). This control
 // models receiving that gift on your own sheet: cycle the method-symbol
-// box to the Method that should get its die back, then tap the glass
-// cover over the Ganbare! box 8 times to break it. Breaking it restores a
-// die immediately, and the cover reforms right away — it needs another
-// full 8 taps next time, same as a fresh glass cover.
+// box to the Method that should get its die back, then tap the frosted
+// glass cover over the Ganbare! box 6 times to unlock it. Unlocking
+// uncovers a glowing button — tapping *that* is the actual confirm step
+// that restores the die and instantly re-covers the glass; leaving it
+// unlocked for a minute without tapping just lets the cover silently
+// reform instead (no restore, no re-count needed — next attempt starts
+// a fresh 6 taps).
 function GanbareControl({
   onReceiveGanbare,
-  brokenAt,
 }: {
   onReceiveGanbare: (field: keyof ApproachStats) => void;
-  /** Timestamp (ms) the glass last shattered, or null if intact. Owned by the parent so it survives reloads. Only used here to re-trigger the brief shatter flash. */
-  brokenAt: number | null;
 }) {
   const [index, setIndex] = useState(0);
   const [taps, setTaps] = useState(0);
-  const [justShattered, setJustShattered] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
+  const [justFired, setJustFired] = useState(false);
+  const unlockTimeoutRef = useRef<number | null>(null);
 
   const field = GANBARE_METHOD_ORDER[index];
 
   const cycle = () => setIndex((i) => (i + 1) % GANBARE_METHOD_ORDER.length);
 
-  // Purely cosmetic: flash the "shattered" look for a moment after each
-  // break, then clear it — the glass has already reformed underneath by
-  // the time the flash ends, since `taps` was reset to 0 immediately.
-  useEffect(() => {
-    if (brokenAt === null) return;
-    setJustShattered(true);
-    const id = window.setTimeout(() => setJustShattered(false), GANBARE_SHATTER_FLASH_MS);
-    return () => window.clearTimeout(id);
-  }, [brokenAt]);
+  const clearUnlockTimeout = () => {
+    if (unlockTimeoutRef.current !== null) {
+      window.clearTimeout(unlockTimeoutRef.current);
+      unlockTimeoutRef.current = null;
+    }
+  };
+
+  useEffect(() => clearUnlockTimeout, []);
 
   const handleTap = () => {
-    // Reads `taps` directly rather than using the setState-updater form:
-    // calling onReceiveGanbare (which updates the *parent's* state) from
-    // inside a React state updater is invalid — React may invoke updaters
-    // twice (e.g. under StrictMode), which would fire the break/restore
-    // side effect twice for a single tap.
-    const next = taps + 1;
-    if (next >= GANBARE_TAPS_TO_BREAK) {
-      setTaps(0);
+    if (unlocked) {
+      // Confirm tap: fire the gift and re-cover instantly.
+      clearUnlockTimeout();
+      setUnlocked(false);
+      setJustFired(true);
+      window.setTimeout(() => setJustFired(false), GANBARE_FIRED_FLASH_MS);
       onReceiveGanbare(field);
+      return;
+    }
+    // Reads `taps` directly rather than using the setState-updater form,
+    // same reasoning as elsewhere in this file — avoids a double side
+    // effect if React invokes the updater twice.
+    const next = taps + 1;
+    if (next >= GANBARE_TAPS_TO_UNLOCK) {
+      setTaps(0);
+      setUnlocked(true);
+      clearUnlockTimeout();
+      unlockTimeoutRef.current = window.setTimeout(() => {
+        unlockTimeoutRef.current = null;
+        setUnlocked(false);
+      }, GANBARE_UNLOCKED_TIMEOUT_MS);
     } else {
       setTaps(next);
     }
   };
 
-  // 4 crack stages (0 = intact): one extra crack every 2 taps.
-  const crackStage = Math.min(4, Math.floor(taps / 2));
+  // 4 crack stages (0 = intact): spread evenly over the taps-to-unlock.
+  const crackStage = Math.min(4, Math.floor((taps * 4) / GANBARE_TAPS_TO_UNLOCK));
 
   return (
     <div className="ganbare-control">
@@ -93,11 +108,15 @@ function GanbareControl({
       </button>
       <button
         type="button"
-        className={`ganbare-receive-box${justShattered ? " shattered" : ` crack-${crackStage}`}`}
+        className={`ganbare-receive-box${unlocked ? " unlocked" : ` crack-${crackStage}`}${justFired ? " fired" : ""}`}
         onClick={handleTap}
-        aria-label={`Receive Ganbare! on ${APPROACH_LABELS[field]}. Tap the glass cover ${GANBARE_TAPS_TO_BREAK - taps} more time${GANBARE_TAPS_TO_BREAK - taps === 1 ? "" : "s"} to break it and restore 1 die.`}
+        aria-label={
+          unlocked
+            ? `Ganbare! unlocked for ${APPROACH_LABELS[field]}. Tap to restore 1 die, or wait a minute for the cover to reform.`
+            : `Receive Ganbare! on ${APPROACH_LABELS[field]}. Tap the frosted glass cover ${GANBARE_TAPS_TO_UNLOCK - taps} more time${GANBARE_TAPS_TO_UNLOCK - taps === 1 ? "" : "s"} to unlock it.`
+        }
       >
-        <span className="ganbare-glass-cover" aria-hidden="true" />
+        {!unlocked && <span className="ganbare-glass-cover" aria-hidden="true" />}
         Ganbare!
       </button>
     </div>
@@ -118,7 +137,6 @@ export function ApproachPanel({
   approachWardrobeOverloadSpent,
   onOverloadApproachDie,
   onReceiveGanbare,
-  ganbareGlassBrokenAt,
   approachWardrobeBonus,
   approachWardrobeItems,
 }: {
@@ -130,10 +148,8 @@ export function ApproachPanel({
   /** Overload spend tracked separately for each Method's Wardrobe bonus dice. */
   approachWardrobeOverloadSpent: Partial<Record<keyof ApproachStats, number>>;
   onOverloadApproachDie: (field: keyof ApproachStats, baseCount: number, wardrobeCount: number) => boolean;
-  /** Restores 1 die to the chosen Method's pool (a friend's Ganbare!, long-press to confirm). */
+  /** Restores 1 die to the chosen Method's pool (a friend's Ganbare!, tap to unlock the glass + confirm). */
   onReceiveGanbare: (field: keyof ApproachStats) => void;
-  /** Timestamp (ms) the Ganbare! glass cover last shattered, or null/undefined if it's intact. */
-  ganbareGlassBrokenAt?: number | null;
   /** Extra dice granted by Wardrobe items assigned to each Method (on top of the Core-distributed rating). Always rolled; Overload-spendable as its own pool. */
   approachWardrobeBonus: Partial<Record<keyof ApproachStats, number>>;
   /** Wardrobe item names/bonuses contributing to each Method's bonus, for a tooltip. */
@@ -259,7 +275,7 @@ export function ApproachPanel({
           );
         })}
       </div>
-      <GanbareControl onReceiveGanbare={onReceiveGanbare} brokenAt={ganbareGlassBrokenAt ?? null} />
+      <GanbareControl onReceiveGanbare={onReceiveGanbare} />
     </div>
   );
 }

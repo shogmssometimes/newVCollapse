@@ -273,20 +273,17 @@ body::-webkit-scrollbar {
 
 /* Swiping up past the deadzone, heading towards "open the Distribution
    popout" — gold, matching the app's existing "opens a menu/options"
-   accent (Wardrobe pips, Ganbare!) rather than the add/remove cyan/red. */
+   accent (Wardrobe pips, Ganbare!) rather than the add/remove cyan/red.
+   The .rising-progress-fill child (rendered only in this state) carries
+   the actual progress feedback now — this class just tints the border,
+   no pulsing. */
 .core-card.tap-pending-open {
-  animation: core-card-tap-pending-open 480ms ease-in-out infinite;
   border-color: #ffd43b;
 }
 
 @keyframes core-card-tap-pending-remove {
   0%, 100% { box-shadow: 0 0 0 rgba(255, 92, 92, 0); }
   50% { box-shadow: 0 0 14px 2px rgba(255, 92, 92, 0.5); }
-}
-
-@keyframes core-card-tap-pending-open {
-  0%, 100% { box-shadow: 0 0 0 rgba(255, 212, 59, 0); }
-  50% { box-shadow: 0 0 14px 2px rgba(255, 212, 59, 0.45); }
 }
 
 /* One-shot solid flash the instant a tap sequence actually commits a
@@ -492,47 +489,58 @@ body::-webkit-scrollbar {
   font: inherit;
 }
 
-/* The glass cover over the Ganbare! box: visible the whole time it's
-   intact (a translucent frosted film — tapping reads as "tapping through
-   the glass to the button beneath" from the very first tap, not just
-   once cracks appear), getting more fractured with each crack stage —
-   stage 0 is pristine-but-frosted, stage 4 is one tap from shattering.
-   Shattering (8th tap) uncovers the box — it stays bright/usable (one
-   tap = use) until the glass re-forms on its own after the cooldown. */
+/* The frosted glass cover over the Ganbare! box: visible the whole time
+   it's locked (a translucent frosted film — tapping reads as "tapping
+   through the glass to the button beneath" from the very first tap, not
+   just once cracks appear), getting more fractured with each crack stage —
+   stage 0 is pristine-but-frosted, stage 4 is one tap from unlocking.
+   Unlocking (6th tap) uncovers the box and sets it glowing — it stays
+   bright/usable (one confirm tap = use, instantly re-covering) until the
+   glass re-forms on its own after a minute with no tap. */
 .ganbare-glass-cover {
   position: absolute;
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14)),
+    linear-gradient(rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.2)),
     linear-gradient(105deg, transparent 48%, rgba(255, 255, 255, 0.35) 49%, transparent 50%),
     linear-gradient(15deg, transparent 48%, rgba(255, 255, 255, 0.3) 49%, transparent 50%),
     linear-gradient(170deg, transparent 48%, rgba(255, 255, 255, 0.3) 49%, transparent 50%),
     linear-gradient(60deg, transparent 48%, rgba(255, 255, 255, 0.3) 49%, transparent 50%);
   background-size: 100% 100%, 200% 200%, 200% 200%, 200% 200%, 200% 200%;
-  backdrop-filter: blur(1px);
-  -webkit-backdrop-filter: blur(1px);
-  opacity: 0.4;
+  backdrop-filter: blur(2.5px);
+  -webkit-backdrop-filter: blur(2.5px);
+  opacity: 0.45;
   transition: opacity 120ms ease-out;
 }
 
-.ganbare-receive-box.crack-1 .ganbare-glass-cover { opacity: 0.55; background-position: 0 0, 10% 20%, 0 0, 0 0, 0 0; }
-.ganbare-receive-box.crack-2 .ganbare-glass-cover { opacity: 0.65; background-position: 0 0, 10% 20%, 70% 30%, 0 0, 0 0; }
-.ganbare-receive-box.crack-3 .ganbare-glass-cover { opacity: 0.8; background-position: 0 0, 10% 20%, 70% 30%, 40% 80%, 0 0; }
+.ganbare-receive-box.crack-1 .ganbare-glass-cover { opacity: 0.58; background-position: 0 0, 10% 20%, 0 0, 0 0, 0 0; }
+.ganbare-receive-box.crack-2 .ganbare-glass-cover { opacity: 0.68; background-position: 0 0, 10% 20%, 70% 30%, 0 0, 0 0; }
+.ganbare-receive-box.crack-3 .ganbare-glass-cover { opacity: 0.82; background-position: 0 0, 10% 20%, 70% 30%, 40% 80%, 0 0; }
 .ganbare-receive-box.crack-4 .ganbare-glass-cover { opacity: 0.95; background-position: 0 0, 10% 20%, 70% 30%, 40% 80%, 80% 10%; }
 
-/* Broken = uncovered and ready — brighter/more inviting than the intact
-   state (not dimmed/disabled), since a single tap now triggers the gift
-   directly until the glass re-forms. */
-.ganbare-receive-box.shattered {
+/* Unlocked = uncovered and glowing — stays like this until the confirm
+   tap fires the gift (see .fired below) or the cover reforms on its own
+   after the timeout. */
+.ganbare-receive-box.unlocked {
+  border-color: rgba(255, 212, 59, 0.7);
+  background: linear-gradient(135deg, rgba(255, 212, 59, 0.22), rgba(255, 212, 59, 0.06));
+  color: rgba(255, 212, 59, 1);
+  animation: ganbare-glow 1100ms ease-in-out infinite alternate;
+}
+
+@keyframes ganbare-glow {
+  0% { box-shadow: 0 0 2px rgba(255, 212, 59, 0.3); }
+  100% { box-shadow: 0 0 10px rgba(255, 212, 59, 0.75); }
+}
+
+/* Confirm tap fired the gift: brief flash, then the glass has already
+   reformed underneath (taps/unlocked were reset the instant this fired). */
+.ganbare-receive-box.fired {
   border-color: rgba(255, 212, 59, 0.7);
   background: linear-gradient(135deg, rgba(255, 212, 59, 0.2), rgba(255, 212, 59, 0.06));
   color: rgba(255, 212, 59, 1);
   animation: ganbare-shatter 400ms ease-out;
-}
-
-.ganbare-receive-box.shattered .ganbare-glass-cover {
-  opacity: 0;
 }
 
 @keyframes ganbare-shatter {
@@ -1233,9 +1241,53 @@ body::after {
   font: inherit;
   text-align: center;
 }
-.method-row-roll > *:not(.hold-progress-fill) {
+.method-row-roll > *:not(.hold-progress-fill):not(.rising-progress-fill) {
   position: relative;
   z-index: 1;
+}
+
+/* Rising charge effect for the two hold-then-swipe-to-commit gestures in
+   this component (Method row roll, die pick-up below) — replaces the old
+   horizontal progress-bar sweep. A soft glow floats upward out of the
+   control and fades in as the hold charges (driven by --rising-progress,
+   0-1, updated continuously from JS), then the instant the pointer has
+   also swiped far enough to commit on release, it snaps to a brighter,
+   higher "ready to let go" position — nothing actually fires until the
+   pointer lifts; this is pure feedback for a release-gated commit. */
+.rising-progress-fill {
+  position: absolute;
+  left: 14%;
+  right: 14%;
+  bottom: 0;
+  height: 70%;
+  background: radial-gradient(ellipse at 50% 100%, rgba(255, 212, 59, 0.5), rgba(255, 212, 59, 0) 72%);
+  opacity: 0;
+  transform: translateY(18%);
+  z-index: 0;
+  pointer-events: none;
+  transition: opacity 70ms linear, transform 70ms linear;
+}
+/* Steady "fully risen" state — the Method row also drives a live
+   in-between position via inline opacity/transform while chargeProgress
+   is still climbing (overriding these), converging on exactly this same
+   end state once charge hits 100%; the die chip (no continuous percentage
+   to track) just jumps straight here once `active`. */
+.rising-progress-fill.active {
+  opacity: 0.85;
+  transform: translateY(-30%);
+}
+.rising-progress-fill.ready {
+  opacity: 1;
+  transform: translateY(-32%);
+  background: radial-gradient(ellipse at 50% 100%, rgba(15, 246, 255, 0.6), rgba(15, 246, 255, 0) 72%);
+}
+/* Time-duration-driven variant (die pick-up charge, no continuous JS
+   percentage like the Method row has) — transitions straight to the
+   risen state over the hold duration set via --hold-progress-ms, same
+   shape the old hold-progress-fill sweep used, just a rise instead of a
+   width fill. */
+.rising-progress-fill.timed {
+  transition: opacity var(--hold-progress-ms, 300ms) linear, transform var(--hold-progress-ms, 300ms) linear;
 }
 
 .method-row-roll:active {

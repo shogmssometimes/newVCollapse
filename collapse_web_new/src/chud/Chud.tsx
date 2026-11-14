@@ -411,7 +411,6 @@ export default function Chud() {
                 approachWardrobeOverloadSpent={approachWardrobeOverloadSpent}
                 onOverloadApproachDie={overloadApproachDie}
                 onReceiveGanbare={receiveGanbare}
-                ganbareGlassBrokenAt={ganbareGlassBrokenAt}
                 approachWardrobeBonus={approachWardrobeBonus}
                 approachWardrobeItems={approachWardrobeItems}
               />

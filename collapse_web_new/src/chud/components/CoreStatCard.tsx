@@ -36,6 +36,12 @@ export function CoreStatCard({
 }) {
   const [dragState, setDragState] = useState<DragState>(null);
   const [commitFlash, setCommitFlash] = useState<CommitFlash>(null);
+  // How far (0-1) the current upward swipe has traveled towards the
+  // commit threshold — drives the rising glow that floats up out of the
+  // card as the drag progresses, the same visual language as the hold-
+  // then-swipe roll gesture elsewhere in the HUD (see .rising-progress-fill
+  // in chud.css). Nothing commits until release either way.
+  const [riseProgress, setRiseProgress] = useState(0);
   const startY = useRef(0);
   const startX = useRef(0);
   const dragging = useRef(false);
@@ -70,14 +76,18 @@ export function CoreStatCard({
     const dx = event.clientX - startX.current;
     if (Math.abs(dy) < SWIPE_DEADZONE_PX || Math.abs(dy) < Math.abs(dx)) {
       setDragState(null);
+      setRiseProgress(0);
       return;
     }
     setDragState(dy > 0 ? "remove" : "open");
+    const progress = Math.min(1, (Math.abs(dy) - SWIPE_DEADZONE_PX) / (SWIPE_COMMIT_PX - SWIPE_DEADZONE_PX));
+    setRiseProgress(dy > 0 ? 0 : progress);
   };
 
   const endDrag = () => {
     dragging.current = false;
     setDragState(null);
+    setRiseProgress(0);
   };
 
   const handlePointerUp = (event: React.PointerEvent) => {
@@ -117,6 +127,13 @@ export function CoreStatCard({
       onPointerCancel={endDrag}
       onContextMenu={(event) => event.preventDefault()}
     >
+      {dragState === "open" && (
+        <span
+          className={`rising-progress-fill active${riseProgress >= 1 ? " ready" : ""}`}
+          style={riseProgress < 1 ? { opacity: riseProgress * 0.85, transform: `translateY(${18 - riseProgress * 48}%)` } : undefined}
+          aria-hidden="true"
+        />
+      )}
       <span className="core-label">{label}</span>
       <div className="core-controls">
         <span className="core-value">{value}</span>

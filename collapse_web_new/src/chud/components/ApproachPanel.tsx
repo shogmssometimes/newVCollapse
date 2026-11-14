@@ -64,14 +64,18 @@ function GanbareControl({
   }, [brokenAt]);
 
   const handleTap = () => {
-    setTaps((prev) => {
-      const next = prev + 1;
-      if (next >= GANBARE_TAPS_TO_BREAK) {
-        onReceiveGanbare(field);
-        return 0;
-      }
-      return next;
-    });
+    // Reads `taps` directly rather than using the setState-updater form:
+    // calling onReceiveGanbare (which updates the *parent's* state) from
+    // inside a React state updater is invalid — React may invoke updaters
+    // twice (e.g. under StrictMode), which would fire the break/restore
+    // side effect twice for a single tap.
+    const next = taps + 1;
+    if (next >= GANBARE_TAPS_TO_BREAK) {
+      setTaps(0);
+      onReceiveGanbare(field);
+    } else {
+      setTaps(next);
+    }
   };
 
   // 4 crack stages (0 = intact): one extra crack every 2 taps.

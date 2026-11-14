@@ -603,22 +603,27 @@ function buildGritCollapseMeter(getMeters, setMeters) {
       }
       update()
     }
+    // Grit (left) is inverted to match the HP card's convention: a long
+    // press adds, a single tap reduces. Collapse (right) keeps the
+    // original tap-adds/hold-reduces behavior.
+    const tapDelta = isLeft ? -1 : +1
+    const holdDelta = isLeft ? +1 : -1
     el.addEventListener('pointerdown', (ev) => {
       if (ev.button === 2) return
       longPress = false; clearTimer()
-      timer = setTimeout(() => { longPress = true; change(-1) }, 520)
+      timer = setTimeout(() => { longPress = true; change(holdDelta) }, 520)
     })
     el.addEventListener('pointerup', (ev) => {
       if (ev.button === 2) return
       clearTimer()
-      if (!longPress) change(+1)
+      if (!longPress) change(tapDelta)
       longPress = false
     })
     ;['pointerleave', 'pointercancel'].forEach((evt) => {
       el.addEventListener(evt, () => { clearTimer(); longPress = false })
     })
     el.addEventListener('contextmenu', (ev) => {
-      ev.preventDefault(); clearTimer(); longPress = false; change(-1)
+      ev.preventDefault(); clearTimer(); longPress = false; change(holdDelta)
     })
   }
 

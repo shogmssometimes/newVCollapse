@@ -114,7 +114,7 @@ export function Page2Panel({
         </div>
         <div className="chip">
           <span>Fumble</span>
-          <strong>{fumbleNumber}</strong>
+          <strong>{fumbleNumber > 0 ? -fumbleNumber : fumbleNumber}</strong>
         </div>
       </div>
 

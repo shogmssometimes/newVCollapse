@@ -354,6 +354,19 @@ export default function Chud() {
             {}
           );
         }
+      } else if (n.kind === "hp-zero") {
+        // Cancelling "You Have Collapsed" means this drop to 0 HP is being
+        // discarded as accidental/undone. A "choose-path" notification only
+        // ever gets queued alongside hp-zero the very first time HP hits 0
+        // (see queueHpZeroNotificationsIfNeeded) — if one is still pending
+        // here, this cancel is undoing that very first down, so drop the
+        // dangling choice too and un-flip `hasBeenDownedBefore` so the real
+        // first down still offers it.
+        const pendingChoosePath = notifications.find((item) => item.kind === "choose-path");
+        if (pendingChoosePath) {
+          removeNotification(pendingChoosePath.id);
+          setHasBeenDownedBefore(false);
+        }
       }
       removeNotification(id);
       setNotifications(listNotifications());

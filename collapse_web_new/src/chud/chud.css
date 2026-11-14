@@ -492,30 +492,34 @@ body::-webkit-scrollbar {
   font: inherit;
 }
 
-/* The glass cover over the Ganbare! box: an inert pane until tapped. Each
-   crack stage layers in more hairline fractures (via repeating-linear-
-   gradient "glass shards" at different angles) — stage 0 is pristine,
-   stage 4 is one tap from shattering. Shattering (8th tap) uncovers the
-   box — it stays bright/usable (one tap = use) until the glass re-forms
-   on its own after the cooldown. */
+/* The glass cover over the Ganbare! box: visible the whole time it's
+   intact (a translucent frosted film — tapping reads as "tapping through
+   the glass to the button beneath" from the very first tap, not just
+   once cracks appear), getting more fractured with each crack stage —
+   stage 0 is pristine-but-frosted, stage 4 is one tap from shattering.
+   Shattering (8th tap) uncovers the box — it stays bright/usable (one
+   tap = use) until the glass re-forms on its own after the cooldown. */
 .ganbare-glass-cover {
   position: absolute;
   inset: 0;
   pointer-events: none;
   background-image:
+    linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14)),
     linear-gradient(105deg, transparent 48%, rgba(255, 255, 255, 0.35) 49%, transparent 50%),
     linear-gradient(15deg, transparent 48%, rgba(255, 255, 255, 0.3) 49%, transparent 50%),
     linear-gradient(170deg, transparent 48%, rgba(255, 255, 255, 0.3) 49%, transparent 50%),
     linear-gradient(60deg, transparent 48%, rgba(255, 255, 255, 0.3) 49%, transparent 50%);
-  background-size: 200% 200%;
-  opacity: 0;
+  background-size: 100% 100%, 200% 200%, 200% 200%, 200% 200%, 200% 200%;
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
+  opacity: 0.4;
   transition: opacity 120ms ease-out;
 }
 
-.ganbare-receive-box.crack-1 .ganbare-glass-cover { opacity: 0.35; background-position: 10% 20%, 0 0, 0 0, 0 0; }
-.ganbare-receive-box.crack-2 .ganbare-glass-cover { opacity: 0.55; background-position: 10% 20%, 70% 30%, 0 0, 0 0; }
-.ganbare-receive-box.crack-3 .ganbare-glass-cover { opacity: 0.75; background-position: 10% 20%, 70% 30%, 40% 80%, 0 0; }
-.ganbare-receive-box.crack-4 .ganbare-glass-cover { opacity: 0.95; background-position: 10% 20%, 70% 30%, 40% 80%, 80% 10%; }
+.ganbare-receive-box.crack-1 .ganbare-glass-cover { opacity: 0.55; background-position: 0 0, 10% 20%, 0 0, 0 0, 0 0; }
+.ganbare-receive-box.crack-2 .ganbare-glass-cover { opacity: 0.65; background-position: 0 0, 10% 20%, 70% 30%, 0 0, 0 0; }
+.ganbare-receive-box.crack-3 .ganbare-glass-cover { opacity: 0.8; background-position: 0 0, 10% 20%, 70% 30%, 40% 80%, 0 0; }
+.ganbare-receive-box.crack-4 .ganbare-glass-cover { opacity: 0.95; background-position: 0 0, 10% 20%, 70% 30%, 40% 80%, 80% 10%; }
 
 /* Broken = uncovered and ready — brighter/more inviting than the intact
    state (not dimmed/disabled), since a single tap now triggers the gift

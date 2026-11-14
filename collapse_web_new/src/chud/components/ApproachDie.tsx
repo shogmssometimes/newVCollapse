@@ -524,7 +524,7 @@ export function ApproachDie({
       pushNotification(
         "margin-fumble",
         "Fumble!",
-        `${label}: the opposition beat you by ${Math.abs(computed)} (Fumble Number ${fumbleNumber}) — Fumble severity ${severity}. Check the Fumble Table.`,
+        `${label}: the opposition beat you by ${Math.abs(computed)} (Fumble Number ${fumbleNumber > 0 ? -fumbleNumber : fumbleNumber}) — Fumble severity ${severity}. Check the Fumble Table.`,
         {}
       )
     }

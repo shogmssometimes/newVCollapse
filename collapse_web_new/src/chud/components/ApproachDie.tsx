@@ -205,10 +205,9 @@ export function ApproachDie({
   // rendered via createPortal into document.body, physically outside
   // boxRef's own subtree, so "outside" must explicitly also check
   // popupRef — relying solely on the popup's own stopPropagation calls
-  // bubbling correctly across the portal boundary (interacting with
-  // touch-blocker.js's overlay spans on real touch devices) was fragile
-  // and could let a tap on a die/button inside the popup be misread as
-  // "outside" and close it before the player's intended action landed.
+  // bubbling correctly across the portal boundary was fragile and could
+  // let a tap on a die/button inside the popup be misread as "outside"
+  // and close it before the player's intended action landed.
   useEffect(() => {
     if (!result) return
     const handleOutside = (event: PointerEvent) => {

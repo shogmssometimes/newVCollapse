@@ -8,8 +8,8 @@ import { NotificationRow } from "./NotificationRow";
  * Dig Deep, etc.). Each row is long-press-to-accept / swipe-left-to-cancel;
  * resolving one unlocks whatever area queued it. The dropdown is portaled to
  * document.body and centered on the viewport (with a dimming backdrop) so it
- * always paints above every widget, including ones carrying their own
- * touch-blocker overlay, and stays reachable regardless of header width.
+ * always paints above every widget, and stays reachable regardless of
+ * header width.
  */
 export function NotificationsTray({
   notifications,

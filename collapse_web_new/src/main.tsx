@@ -4,9 +4,7 @@ import App from './App';
 import './styles/variables.css';
 import './index.css';
 
-const TOUCH_BLOCKER_SELECTOR = 'button, a[href], [role="button"], .button, .counter-btn, .card, .stat-card, .core-card, .interactive, .stat-large'
 const TOUCH_SELECTION_INIT_KEY = '__collapseTouchSelectionInit__'
-const TOUCH_BLOCKER_INIT_KEY = '__collapseTouchBlockerInit__'
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -73,6 +71,16 @@ if (typeof window !== 'undefined' && 'ontouchstart' in window && !(window as any
     }, 450);
   }, { passive: true });
   document.addEventListener('touchend', () => { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } }, { passive: true });
+
+  // Clear immediately when selection changes
+  document.addEventListener('selectionchange', () => {
+    // use rAF to ensure we clear after browser selection update
+    requestAnimationFrame(clearSelectionUnlessSelectable);
+  }, { passive: true });
+
+  // Immediately clear on pointer/touch interactions to prevent handles popping up
+  document.addEventListener('pointerdown', clearSelectionUnlessSelectable, { passive: true });
+  document.addEventListener('pointerup', clearSelectionUnlessSelectable, { passive: true });
 }
 
 // Clear any text selection unless the selection is inside an element with `.selectable`.
@@ -94,146 +102,3 @@ function clearSelectionUnlessSelectable() {
   }
 }
 
-// Add transparent touch-blocker overlays to interactive controls to intercept long-press selection
-function attachTouchBlockerToButton(btn: HTMLElement) {
-  // skip elements that opt out
-  if (btn.matches && btn.matches('[data-touch-blocker-ignore]')) return;
-
-  // avoid double-attaching
-  if ((btn as any)._touchBlockerAttached) return;
-  // ensure positioning context and mark host
-  const cs = getComputedStyle(btn);
-  if (cs.position === 'static') {
-    btn.style.position = 'relative';
-  }
-  btn.classList.add('has-touch-blocker');
-
-  const blocker = document.createElement('span');
-  blocker.className = 'touch-blocker';
-  blocker.setAttribute('aria-hidden', 'true');
-  blocker.setAttribute('tabindex', '-1');
-
-  // touch handling: start a hold timer; short taps synthesize a click
-  let downTime = 0;
-  let holdTimer: number | null = null;
-  let startX = 0;
-  let startY = 0;
-
-  let moved = false;
-  const cancelHold = () => { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } };
-
-  const onPointerDown = (e: PointerEvent) => {
-    if (e.pointerType && e.pointerType !== 'touch') return;
-    // ignore events inside selectable areas
-    const el = (e.target instanceof Element) ? (e.target as Element) : null;
-    if (el && el.closest && el.closest('.selectable')) return;
-
-    downTime = Date.now();
-    startX = (e as any).clientX || 0;
-    startY = (e as any).clientY || 0;
-    moved = false;
-    cancelHold();
-    holdTimer = window.setTimeout(() => {
-      // Clear selection and trigger long-press context menu
-      clearSelectionUnlessSelectable();
-      try { btn.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })); } catch(e) {}
-      holdTimer = null;
-    }, 350);
-  };
-
-  const onPointerMove = (e: PointerEvent) => {
-    const x = (e as any).clientX || 0;
-    const y = (e as any).clientY || 0;
-    if (Math.abs(x - startX) > 10 || Math.abs(y - startY) > 10) {
-      cancelHold();
-      moved = true;
-    }
-  };
-
-  const onPointerUp = (e: PointerEvent) => {
-    if (e.pointerType && e.pointerType !== 'touch') return;
-    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
-    const dt = Date.now() - downTime;
-    downTime = 0;
-    // short tap -> activate the element only if it was not moved
-    if (dt < 350 && !moved) {
-      btn.click();
-    }
-  };
-
-  blocker.addEventListener('pointerdown', onPointerDown, { passive: false });
-  blocker.addEventListener('pointermove', onPointerMove, { passive: true });
-  blocker.addEventListener('pointerup', onPointerUp, { passive: true });
-  // fallback for older touch-only environments
-  blocker.addEventListener('touchstart', (e) => {
-    const touch = (e as TouchEvent).changedTouches[0];
-    const el = (e.target instanceof Element) ? (e.target as Element) : null;
-    if (el && el.closest && el.closest('.selectable')) return;
-    downTime = Date.now();
-    startX = touch.clientX || 0;
-    startY = touch.clientY || 0;
-    moved = false;
-    cancelHold();
-    holdTimer = window.setTimeout(() => { clearSelectionUnlessSelectable(); try { btn.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })); } catch(e) {} holdTimer = null; }, 350);
-  }, { passive: true });
-  blocker.addEventListener('touchmove', (e) => {
-    const touch = (e as TouchEvent).changedTouches[0];
-    if (!touch) return;
-    if (Math.abs((touch.clientX || 0) - startX) > 10 || Math.abs((touch.clientY || 0) - startY) > 10) {
-      cancelHold();
-      moved = true;
-    }
-  }, { passive: true });
-  blocker.addEventListener('touchend', (e) => {
-    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
-    const dt = Date.now() - downTime; downTime = 0;
-    if (dt < 350 && !moved) btn.click();
-  }, { passive: true });
-
-  // insert overlay - append so it sits above other positioned children; increase z-index via CSS
-  btn.appendChild(blocker);
-  (btn as any)._touchBlockerAttached = true;
-}
-
-function attachBlockersToAllButtons(root: ParentNode = document) {
-  try {
-    // expanded selector set for interactive elements
-    root.querySelectorAll(TOUCH_BLOCKER_SELECTOR).forEach((el) => {
-      if (el instanceof HTMLElement) attachTouchBlockerToButton(el);
-    });
-  } catch (e) {
-    // ignore
-  }
-}
-
-// auto-attach on load and watch for new buttons
-if (typeof window !== 'undefined' && !(window as any)[TOUCH_BLOCKER_INIT_KEY]) {
-  (window as any)[TOUCH_BLOCKER_INIT_KEY] = true
-  attachBlockersToAllButtons();
-  try {
-    const mo = new MutationObserver((mutations) => {
-      mutations.forEach((m) => {
-        m.addedNodes.forEach((node) => {
-          if (!(node instanceof HTMLElement)) return;
-          if (node.matches && node.matches(TOUCH_BLOCKER_SELECTOR)) attachTouchBlockerToButton(node);
-          node.querySelectorAll && node.querySelectorAll(TOUCH_BLOCKER_SELECTOR).forEach((el) => { if (el instanceof HTMLElement) attachTouchBlockerToButton(el); });
-        });
-      });
-    });
-    mo.observe(document.body, { childList: true, subtree: true });
-  } catch (e) {
-    // ignore
-  }
-  // Clear immediately when selection changes
-  document.addEventListener('selectionchange', () => {
-    // use rAF to ensure we clear after browser selection update
-    requestAnimationFrame(clearSelectionUnlessSelectable);
-  }, { passive: true });
-
-  // Immediately clear on pointer/touch interactions to prevent handles popping up
-  document.addEventListener('pointerdown', clearSelectionUnlessSelectable, { passive: true });
-  document.addEventListener('touchstart', clearSelectionUnlessSelectable, { passive: true });
-  document.addEventListener('touchmove', clearSelectionUnlessSelectable, { passive: true });
-  document.addEventListener('pointerup', clearSelectionUnlessSelectable, { passive: true });
-  document.addEventListener('touchend', clearSelectionUnlessSelectable, { passive: true });
-}

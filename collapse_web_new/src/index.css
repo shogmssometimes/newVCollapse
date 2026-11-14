@@ -448,6 +448,20 @@ button:hover {
   touch-action: none !important;
 }
 
+/* Core Stat / WT cards and the Quality die control (rendered here via
+   chud/components/*, whose own chud.css touch-action:none rule is NOT
+   loaded in the main app bundle) implement their own vertical swipe/hold
+   drag gestures in JS. The global touch-action reset above still wins by
+   specificity (it has more type/class selectors) unless given an
+   explicitly stronger rule, letting native scroll hijack the drag before
+   pointermove ever fires on a real touchscreen. Doubling the class
+   bumps specificity past the reset above without an origin/!important
+   ordering gamble. */
+#root .core-card.core-card,
+#root .approach-die-size-button.approach-die-size-button {
+  touch-action: none !important;
+}
+
 /* Prevent text selection and highlights globally in the app (use .selectable to opt back in) */
 html, body, #root, #root *:not(input):not(textarea):not([contenteditable]) {
   -webkit-user-select: none !important; /* iOS Safari */
@@ -499,26 +513,6 @@ button {
   caret-color: auto !important;
   touch-action: auto !important;
   pointer-events: auto !important;
-}
-
-/* Overlay element used to intercept touch/long-press on buttons */
-.touch-blocker {
-  position: absolute;
-  inset: 0;
-  z-index: 9999; /* high so overlay sits above internal children */
-  background: transparent;
-  border-radius: inherit;
-  display: block;
-  pointer-events: auto;
-  touch-action: manipulation;
-}
-
-.has-touch-blocker {
-  position: relative;
-}
-
-button.has-touch-blocker, a.button.has-touch-blocker, .button.has-touch-blocker {
-  position: relative;
 }
 
 .topbar {

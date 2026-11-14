@@ -124,7 +124,6 @@ export default function ModifierCardGrid({
             <div
               key={card.id}
               className={`engram-list-item ${isAttached ? 'is-selected' : ''}`}
-              data-touch-blocker-ignore
               style={{
                 position: 'relative',
                 overflow: 'hidden',

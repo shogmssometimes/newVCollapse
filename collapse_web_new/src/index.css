@@ -2380,21 +2380,8 @@ button.hub-card:not(:disabled):active {
   margin-top: 3px;
 }
 
-.engram-restore-budget {
-  font-size: 0.85rem;
-  color: #ffd43b;
-  background: rgba(255, 212, 59, 0.1);
-  border: 1px solid rgba(255, 212, 59, 0.4);
-  border-radius: 8px;
-  padding: 6px 10px;
-}
-
 .engram-manager-queue-preview {
   margin-bottom: 1rem;
-}
-
-.engram-restore-hint {
-  font-weight: 700;
 }
 
 .engram-catalog-list {
@@ -2475,14 +2462,4 @@ button.hub-card:not(:disabled):active {
 .engram-charges-readout {
   font-size: 0.78rem;
   color: rgba(248, 250, 252, 0.7);
-}
-
-.engram-restore-btn {
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.06);
-  color: #f8fafc;
-  padding: 4px 10px;
-  font: inherit;
-  cursor: pointer;
 }

@@ -20,9 +20,9 @@ const READINESS_ROLL_ANIM_INTERVAL_MS = 60;
 //   2. WT | Damage die
 //   3. Capacity | Inventory Slots
 //   4. Core Stats (long-press opens the Approach distribution popout)
-// The Approach dice cards (tap-arm / hold-roll) and the Short Rest / Dig
-// Deep / Full Rest stack live elsewhere now — Approach moved to the HUD,
-// Rest moved to the bottom of this page (see RestWidget below).
+// The Approach dice cards (tap-arm / hold-roll) and the Dig Deep / Full
+// Rest stack live elsewhere now — Approach moved to the HUD, Rest moved to
+// the bottom of this page (see RestWidget below).
 export function Page2Panel({
   onOpenMgr,
   readyness,

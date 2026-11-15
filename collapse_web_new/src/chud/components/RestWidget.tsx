@@ -14,7 +14,7 @@ import {
   resetApproachOverload,
   resetGanbareCharges,
 } from "../../utils/chudVanillaBridge";
-import { grantEngramRestoreBudget, fullRestEngrams } from "../../utils/engramState";
+import { fullRestEngrams } from "../../utils/engramState";
 
 function readState(storageKey: string): Record<string, unknown> {
   try {
@@ -33,18 +33,9 @@ function writeState(storageKey: string, patch: Record<string, unknown>) {
   }
 }
 
-const SHORT_REST_KINDS = ["short-rest-grit", "short-rest-hp", "short-rest-engrams"] as const;
-
-function anyShortRestPending(): boolean {
-  return SHORT_REST_KINDS.some((k) => hasPendingNotification(k));
-}
-
-// Short Rest / Dig Deep / Full Rest, rendered at the bottom of the AAG page.
-// Every Rest effect is rolled up-front (when applicable) and queued as a
-// notification — nothing applies automatically. Dig Deep already followed
-// this pattern; Short/Full Rest now do too:
-//   - Short Rest: choose exactly one of Grit (+1) / HP (1d6) / Engrams
-//     (1d4 restore budget, spent later in the Engram Manager).
+// Dig Deep / Full Rest, rendered at the bottom of the AAG page. Every Rest
+// effect is rolled up-front and queued as a notification — nothing applies
+// automatically.
 //   - Full Rest: Grit set to 1d6 + Rest Bonus (max 6), HP to max, Overload
 //     dice (Method dice) fully reset, all Engram charges refilled, and
 //     Ganbare! Charges restored to max.
@@ -60,13 +51,9 @@ export function RestWidget({
   const [digDeepPending, setDigDeepPending] = useState<boolean>(() =>
     typeof window !== "undefined" ? hasPendingNotification("dig-deep") : false
   );
-  const [shortRestPending, setShortRestPending] = useState<boolean>(() =>
-    typeof window !== "undefined" ? anyShortRestPending() : false
-  );
   const [fullRestPending, setFullRestPending] = useState<boolean>(() =>
     typeof window !== "undefined" ? hasPendingNotification("full-rest") : false
   );
-  const [shortRestOpen, setShortRestOpen] = useState(false);
   const [restBonus, setRestBonus] = useState<number>(() => {
     const v = readState(storageKey).restBonus;
     return typeof v === "number" ? v : 0;
@@ -76,7 +63,6 @@ export function RestWidget({
     const handler = (e: StorageEvent) => {
       if (e.key !== getNotificationsStorageKey()) return;
       setDigDeepPending(hasPendingNotification("dig-deep"));
-      setShortRestPending(anyShortRestPending());
       setFullRestPending(hasPendingNotification("full-rest"));
     };
     window.addEventListener("storage", handler);
@@ -102,57 +88,6 @@ export function RestWidget({
       { hp: -lose, grit: gain }
     );
     if (created) setDigDeepPending(true);
-  }, []);
-
-  const chooseShortRestGrit = useCallback(() => {
-    if (anyShortRestPending()) return;
-    const { grit: currentGrit, collapse } = readGlobalMeters();
-    const maxGrit = maxGritForCollapse(collapse);
-    const actualGain = Math.min(maxGrit, currentGrit + 1) - currentGrit;
-    const created = pushNotification(
-      "short-rest-grit",
-      "Short Rest — Restore Grit",
-      actualGain > 0
-        ? `Accept to gain +${actualGain} Grit.`
-        : `Grit is already at its Collapse-limited max (${maxGrit}) — accepting has no effect.`,
-      { grit: 1 }
-    );
-    if (created) {
-      setShortRestPending(true);
-      setShortRestOpen(false);
-    }
-  }, []);
-
-  const chooseShortRestHp = useCallback(() => {
-    if (anyShortRestPending()) return;
-    const roll = 1 + Math.floor(Math.random() * 6);
-    const created = pushNotification(
-      "short-rest-hp",
-      "Short Rest — Restore HP",
-      `Rolled ${roll}. Accept to gain ${roll} HP.`,
-      { hp: roll },
-      { roll: { die: 6, value: roll } }
-    );
-    if (created) {
-      setShortRestPending(true);
-      setShortRestOpen(false);
-    }
-  }, []);
-
-  const chooseShortRestEngrams = useCallback(() => {
-    if (anyShortRestPending()) return;
-    const roll = 1 + Math.floor(Math.random() * 4);
-    const created = pushNotification(
-      "short-rest-engrams",
-      "Short Rest — Restore Engrams",
-      `Rolled ${roll}. Accept to restore ${roll} Engram charge${roll === 1 ? "" : "s"} (choose which in the Engram Manager).`,
-      { engramRestoreBudget: roll },
-      { roll: { die: 4, value: roll } }
-    );
-    if (created) {
-      setShortRestPending(true);
-      setShortRestOpen(false);
-    }
   }, []);
 
   const onFullRest = useCallback(() => {
@@ -193,28 +128,6 @@ export function RestWidget({
       <h3>Rest</h3>
 
       <div className="rest-stack">
-        <button
-          type="button"
-          className="rest-stack-btn short"
-          onClick={() => setShortRestOpen((v) => !v)}
-          disabled={shortRestPending}
-          title={shortRestPending ? "Resolve the pending Short Rest notification first" : undefined}
-        >
-          {shortRestPending ? "Short Rest (pending…)" : "Short Rest"}
-        </button>
-        {shortRestOpen && !shortRestPending && (
-          <div className="short-rest-choices" role="group" aria-label="Choose one Short Rest option">
-            <button type="button" onClick={chooseShortRestGrit}>
-              Restore Grit (+1)
-            </button>
-            <button type="button" onClick={chooseShortRestHp}>
-              Restore HP (1d6)
-            </button>
-            <button type="button" onClick={chooseShortRestEngrams}>
-              Restore Engrams (1d4)
-            </button>
-          </div>
-        )}
         <button
           type="button"
           className="rest-stack-btn digdeep"
@@ -258,11 +171,4 @@ export function applyFullRestExtras(chudStateKey: string, deckBuilderStorageKey:
   resetApproachOverload(chudStateKey);
   resetGanbareCharges(chudStateKey);
   fullRestEngrams(deckBuilderStorageKey);
-}
-
-// Applies an accepted "short-rest-engrams" notification: grants the rolled
-// restore budget, to be spent interactively (player's choice of Engram) in
-// the Engram Manager.
-export function applyShortRestEngramBudget(deckBuilderStorageKey: string, amount: number): void {
-  grantEngramRestoreBudget(deckBuilderStorageKey, amount);
 }

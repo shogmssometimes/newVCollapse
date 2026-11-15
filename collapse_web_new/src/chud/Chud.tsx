@@ -20,7 +20,7 @@ import { computeWardrobeBonuses } from "../domain/wardrobeBonus";
 import { loadState, readGearData, readWardrobeData } from "../utils/chudPersistence";
 import { wardrobeKey, deckBuilderKey } from "../utils/slotKeys";
 import { adjustGlobalMeters, setChipDesynced, resetApproachOverload, setVanillaBridgeSlot } from "../utils/chudVanillaBridge";
-import { fullRestEngrams, grantEngramRestoreBudget, readEngramState, type EngramManagerState } from "../utils/engramState";
+import { fullRestEngrams, readEngramState, type EngramManagerState } from "../utils/engramState";
 import {
   getNotificationsStorageKey,
   listNotifications,
@@ -95,7 +95,7 @@ export default function Chud() {
     typeof window !== "undefined" ? (readGearData(GEAR_SLOTS_KEY)?.slotsUsed ?? 0) : 0
   );
   const [engramState, setEngramState] = useState<EngramManagerState>(() =>
-    typeof window !== "undefined" ? readEngramState(DECK_BUILDER_KEY) : { equipped: {}, pendingEngramRestoreBudget: 0 }
+    typeof window !== "undefined" ? readEngramState(DECK_BUILDER_KEY) : { equipped: {} }
   );
   const [wardrobeEntries, setWardrobeEntries] = useState(() =>
     typeof window !== "undefined" ? readWardrobeData(WARDROBE_KEY) : []
@@ -342,7 +342,6 @@ export default function Chud() {
         if (n.effect.desync) setChipDesynced(true);
         if (n.effect.restoreOverload) resetApproachOverload(STORAGE_KEY);
         if (n.effect.fullEngramRestore) fullRestEngrams(DECK_BUILDER_KEY);
-        if (n.effect.engramRestoreBudget) grantEngramRestoreBudget(DECK_BUILDER_KEY, n.effect.engramRestoreBudget);
         if (n.kind === "hp-zero") {
           const pathLabel = collapsePath ? `${collapsePath[0].toUpperCase()}${collapsePath.slice(1)}` : null;
           pushNotification(

@@ -17,9 +17,6 @@ export type NotificationKind =
   | "desync"
   | "collapse-table"
   | "choose-path"
-  | "short-rest-grit"
-  | "short-rest-hp"
-  | "short-rest-engrams"
   | "full-rest"
   | "engram-spent"
   | "margin-wound"
@@ -35,11 +32,6 @@ export type NotificationEffect = {
   restoreOverload?: boolean;
   /** Full Rest: refills every equipped Engram's charges to max. */
   fullEngramRestore?: boolean;
-  /** Short Rest "Restore Engrams": how many Engram charges (from the 1d4
-   * roll) the player may restore, distributed across any equipped Engram
-   * of their choice in the Engram Manager rather than applied
-   * automatically. */
-  engramRestoreBudget?: number;
 };
 
 export type NotificationChoice = { key: string; label: string };

@@ -13,13 +13,7 @@ export type EquippedEngramState = { copies: number; charges: number }
 
 export type EngramManagerState = {
   equipped: Record<string, EquippedEngramState>
-  /** Short Rest "Restore Engrams": how many charges the player may still
-   * distribute (their choice, across any equipped Engram) before this
-   * resets to 0. */
-  pendingEngramRestoreBudget: number
 }
-
-const DEFAULT_STATE: EngramManagerState = { equipped: {}, pendingEngramRestoreBudget: 0 }
 
 function notify(key: string, json: string) {
   try {
@@ -32,14 +26,13 @@ function notify(key: string, json: string) {
 export function readEngramState(storageKey: string): EngramManagerState {
   try {
     const raw = window.localStorage.getItem(storageKey)
-    if (!raw) return { ...DEFAULT_STATE, equipped: {} }
+    if (!raw) return { equipped: {} }
     const parsed = JSON.parse(raw) as Partial<EngramManagerState>
     return {
       equipped: parsed.equipped ?? {},
-      pendingEngramRestoreBudget: parsed.pendingEngramRestoreBudget ?? 0,
     }
   } catch {
-    return { ...DEFAULT_STATE, equipped: {} }
+    return { equipped: {} }
   }
 }
 
@@ -81,11 +74,11 @@ export function spendEngramCharges(storageKey: string, engramId: string, amount:
 }
 
 /** HUD Engram queue's tap gesture: manually adds back 1 charge to an
- * equipped Engram, capped at its copies (max charges). Unlike
- * `restoreEngramCharge`, this isn't gated behind a Rest's restore budget —
- * it's a quick manual adjustment the player can make at any time (e.g. to
- * correct a charge count, or track charges recovered from Gear). No-op if
- * the Engram isn't equipped or is already at max charges. */
+ * equipped Engram, capped at its copies (max charges). This isn't gated
+ * behind any Rest mechanic — it's a quick manual adjustment the player can
+ * make at any time (e.g. to correct a charge count, or track charges
+ * recovered from Gear). No-op if the Engram isn't equipped or is already at
+ * max charges. */
 export function addEngramCharge(storageKey: string, engramId: string): void {
   const state = readEngramState(storageKey)
   const current = state.equipped[engramId]
@@ -96,37 +89,11 @@ export function addEngramCharge(storageKey: string, engramId: string): void {
   })
 }
 
-/** Short Rest "Restore Engrams": grants a restore budget the player then
- * spends (their choice of which Engram) via `restoreEngramCharge`. */
-export function grantEngramRestoreBudget(storageKey: string, amount: number): void {
-  const state = readEngramState(storageKey)
-  writeEngramState(storageKey, {
-    ...state,
-    pendingEngramRestoreBudget: Math.max(0, state.pendingEngramRestoreBudget + amount),
-  })
-}
-
-/** Spends 1 point of the pending restore budget to restore 1 charge to the
- * given Engram, capped at its copies (max charges). No-op if there's no
- * budget left or the Engram is already full. */
-export function restoreEngramCharge(storageKey: string, engramId: string): void {
-  const state = readEngramState(storageKey)
-  if (state.pendingEngramRestoreBudget <= 0) return
-  const current = state.equipped[engramId]
-  if (!current || current.charges >= current.copies) return
-  writeEngramState(storageKey, {
-    ...state,
-    equipped: { ...state.equipped, [engramId]: { ...current, charges: current.charges + 1 } },
-    pendingEngramRestoreBudget: state.pendingEngramRestoreBudget - 1,
-  })
-}
-
-/** Full Rest: every equipped Engram's charges refill to its copies count;
- * any leftover Short Rest restore budget is cleared. */
+/** Full Rest: every equipped Engram's charges refill to its copies count. */
 export function fullRestEngrams(storageKey: string): void {
   const state = readEngramState(storageKey)
   const equipped = Object.fromEntries(
     Object.entries(state.equipped).map(([id, e]) => [id, { ...e, charges: e.copies }])
   )
-  writeEngramState(storageKey, { equipped, pendingEngramRestoreBudget: 0 })
+  writeEngramState(storageKey, { equipped })
 }

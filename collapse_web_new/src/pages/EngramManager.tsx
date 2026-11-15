@@ -5,7 +5,6 @@ import { engramCatalog } from "../data/handbook/engramCatalog";
 import {
   readEngramState,
   setEngramCopies,
-  restoreEngramCharge,
   type EngramManagerState,
 } from "../utils/engramState";
 import { EngramBriefWidget } from "../chud/components/EngramBriefWidget";
@@ -70,8 +69,6 @@ export default function EngramManager({
     [state.equipped, capacityRemaining, storageKey, refresh]
   );
 
-  const restoreBudget = state.pendingEngramRestoreBudget;
-
   return (
     <div className="page engram-manager">
       <div className="engram-manager-header">
@@ -91,12 +88,6 @@ export default function EngramManager({
             </div>
           </div>
         )}
-        {restoreBudget > 0 && (
-          <div className="engram-restore-budget" role="status">
-            Short Rest: {restoreBudget} Engram charge{restoreBudget === 1 ? "" : "s"} to restore — tap{" "}
-            <span className="engram-restore-hint">Restore</span> on any Engram below.
-          </div>
-        )}
       </div>
 
       <div className="engram-manager-queue-preview">
@@ -109,7 +100,6 @@ export default function EngramManager({
           const copies = equipped?.copies ?? 0;
           const charges = equipped?.charges ?? 0;
           const canAddCopy = def.level <= capacityRemaining;
-          const canRestore = restoreBudget > 0 && copies > 0 && charges < copies;
           return (
             <div key={def.id} className="engram-row">
               <div className="engram-row-main">
@@ -131,23 +121,9 @@ export default function EngramManager({
                   </button>
                 </div>
                 {copies > 0 && (
-                  <>
-                    <div className="engram-charges-readout">
-                      {charges} / {copies} charges
-                    </div>
-                    {canRestore && (
-                      <button
-                        type="button"
-                        className="engram-restore-btn"
-                        onClick={() => {
-                          restoreEngramCharge(storageKey, def.id);
-                          refresh();
-                        }}
-                      >
-                        Restore
-                      </button>
-                    )}
-                  </>
+                  <div className="engram-charges-readout">
+                    {charges} / {copies} charges
+                  </div>
                 )}
               </div>
             </div>

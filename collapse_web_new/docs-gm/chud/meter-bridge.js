@@ -291,12 +291,6 @@ function createStyles() {
     .chud-wallet-btn.debit  { background: linear-gradient(135deg, #0fa878, #3de8c0); color: #051a14; }
     .chud-wallet-btn.credit { background: linear-gradient(135deg, #9b1b4a, #ff6b9a); color: #fff; }
 
-    /* ── Short Rest tally ─────────────────────────────────────────────── */
-    .chud-tally { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; -webkit-user-select: none; }
-    .chud-tally-label { font-size: 13px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(248,250,252,0.65); }
-    .chud-tally-marks { display: flex; align-items: center; gap: 6px; color: rgba(15,246,255,0.85); }
-    .chud-tally-group { flex-shrink: 0; }
-
     /* ── Status Rolls Panel ───────────────────────────────────────────── */
     .chud-status-rolls { margin-top: 4px; display: flex; flex-direction: column; gap: 8px; }
     .status-roll-header { display: flex; gap: 6px; padding: 0 2px; }
@@ -675,79 +669,9 @@ function buildCombatPanel() {
     const s = readCombat(); writeCombat({ ...s, chipDesynced: !s.chipDesynced }); refresh()
   })
 
-  // ── Short Rest tally ──────────────────────────────────────────────────────
-  const readTally = (key) => {
-    try { const s = JSON.parse(localStorage.getItem(CHUD_STATE_KEY) || '{}'); const v = s[key]; return typeof v === 'number' ? v : 0 } catch { return 0 }
-  }
-  const writeTally = (key, value) => {
-    try { const s = JSON.parse(localStorage.getItem(CHUD_STATE_KEY) || '{}'); s[key] = value; localStorage.setItem(CHUD_STATE_KEY, JSON.stringify(s)) } catch {}
-  }
-  const makeTallyGroupSVG = (n) => {
-    const svgNS = 'http://www.w3.org/2000/svg'
-    const svg = document.createElementNS(svgNS, 'svg')
-    svg.classList.add('chud-tally-group')
-    svg.setAttribute('width', '26')
-    svg.setAttribute('height', '20')
-    svg.setAttribute('viewBox', '0 0 26 20')
-    const barX = [3, 9, 15, 21]
-    const shown = Math.min(n, 4)
-    for (let i = 0; i < shown; i++) {
-      const line = document.createElementNS(svgNS, 'line')
-      line.setAttribute('x1', String(barX[i])); line.setAttribute('y1', '2')
-      line.setAttribute('x2', String(barX[i])); line.setAttribute('y2', '18')
-      line.setAttribute('stroke', 'currentColor'); line.setAttribute('stroke-width', '2'); line.setAttribute('stroke-linecap', 'round')
-      svg.appendChild(line)
-    }
-    if (n >= 5) {
-      const diag = document.createElementNS(svgNS, 'line')
-      diag.setAttribute('x1', '1'); diag.setAttribute('y1', '18')
-      diag.setAttribute('x2', '23'); diag.setAttribute('y2', '2')
-      diag.setAttribute('stroke', 'currentColor'); diag.setAttribute('stroke-width', '2'); diag.setAttribute('stroke-linecap', 'round')
-      svg.appendChild(diag)
-    }
-    return svg
-  }
-  const makeTally = (label, key, max) => {
-    const wrap = document.createElement('div')
-    wrap.className = 'chud-tally'
-    wrap.setAttribute('data-touch-blocker-ignore', '')
-    const lbl = document.createElement('span')
-    lbl.className = 'chud-tally-label'
-    lbl.textContent = label
-    const marksWrap = document.createElement('div')
-    marksWrap.className = 'chud-tally-marks'
-    wrap.appendChild(lbl)
-    wrap.appendChild(marksWrap)
-
-    let count = Math.max(0, Math.min(max, readTally(key)))
-    const renderMarks = () => {
-      marksWrap.innerHTML = ''
-      marksWrap.appendChild(makeTallyGroupSVG(Math.max(0, Math.min(5, count))))
-      marksWrap.appendChild(makeTallyGroupSVG(Math.max(0, Math.min(5, count - 5))))
-    }
-    renderMarks()
-
-    wrap.addEventListener('click', (ev) => {
-      ev.stopPropagation()
-      count = count >= max ? 0 : count + 1
-      writeTally(key, count)
-      renderMarks()
-      window.dispatchEvent(new StorageEvent('storage', { key: CHUD_STATE_KEY, newValue: localStorage.getItem(CHUD_STATE_KEY) }))
-    })
-
-    const sync = () => { count = Math.max(0, Math.min(max, readTally(key))); renderMarks() }
-    window.addEventListener('storage', (ev) => { if (ev.key === CHUD_STATE_KEY) sync() })
-
-    return wrap
-  }
-  // Short Rest is a tally (0-10), mounted separately in Page 2. Push It has
-  // been removed entirely.
-  const shortRestFlag = makeTally('Short Rest', 'shortRestTally', 10)
-  // ── end flags ─────────────────────────────────────────────────────────────
-
   refresh()
   window.addEventListener('storage', (ev) => { if (ev.key === COMBAT_KEY) refresh() })
-  return { chipSection, shortRestFlag }
+  return { chipSection }
 }
 
 function readStatusRolls() {
@@ -1625,7 +1549,7 @@ function mountMeters() {
   // Set Rolls (Status Effects) mounts inside the HP box, directly below the
   // Chip Sync control. Combat box (CR/FR) has been removed entirely; CR/FR
   // now render read-only on the standalone AAG page, outside this iframe.
-  // Page 2 (including Damage die + Short Rest) also lives on the AAG page.
+  // Page 2 (including Damage die) also lives on the AAG page.
   // Wallet + Reps now live on the standalone MGR page. Reaction Tokens and
   // the action/reaction Queue have been removed (player side).
   const { chipSection } = buildCombatPanel()

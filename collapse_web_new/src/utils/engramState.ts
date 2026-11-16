@@ -73,22 +73,6 @@ export function spendEngramCharges(storageKey: string, engramId: string, amount:
   writeEngramState(storageKey, { ...state, equipped })
 }
 
-/** HUD Engram queue's tap gesture: manually adds back 1 charge to an
- * equipped Engram, capped at its copies (max charges). This isn't gated
- * behind any Rest mechanic — it's a quick manual adjustment the player can
- * make at any time (e.g. to correct a charge count, or track charges
- * recovered from Gear). No-op if the Engram isn't equipped or is already at
- * max charges. */
-export function addEngramCharge(storageKey: string, engramId: string): void {
-  const state = readEngramState(storageKey)
-  const current = state.equipped[engramId]
-  if (!current || current.charges >= current.copies) return
-  writeEngramState(storageKey, {
-    ...state,
-    equipped: { ...state.equipped, [engramId]: { ...current, charges: current.charges + 1 } },
-  })
-}
-
 /** Spends every currently-charged use of one equipped Engram at once — the
  * Method roll popup's Engram icon taps all of an Engram's charged stacks
  * in a single gesture rather than one at a time. Returns how many charges

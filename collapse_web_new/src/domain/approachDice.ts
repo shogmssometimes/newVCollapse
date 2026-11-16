@@ -73,21 +73,26 @@ export function fullRestOverload(): number {
 }
 
 /**
- * Negative Margin (a failed roll against Opposition) inflicts Wounds,
- * scaled to how badly the roll failed by. Table from the handbook:
- *   0–2   -> 1 Wound
- *   3–6   -> 2 Wounds
- *   7–12  -> 3 Wounds
- *   13–20 -> 4 Wounds
- * A non-negative Margin (success or tie) inflicts none. Anything beyond
- * 20 is treated the same as 13-20 (no higher tier specified).
+ * A failed Attack only inflicts Wounds on the attacker if it's a genuine
+ * Fumble: the Defense Total beat the Attack Total by the attacker's Fumble
+ * Number (V+I+P) or more. A miss that falls short of the Fumble Number is
+ * just a miss — no Wounds. The Fumble Table is then read by how far PAST
+ * the Fumble Number the miss went (not by the raw miss amount):
+ *   0–2   past -> 1 Wound
+ *   3–6   past -> 2 Wounds
+ *   7–12  past -> 3 Wounds
+ *   13+   past -> 4 Wounds
+ * `fumbleNumber` is always a non-negative V+I+P total (see
+ * domain/chudStats.ts's computeFumbleNumber).
  */
-export function computeMarginWounds(margin: number): number {
-  if (margin >= 0) return 0
-  const magnitude = Math.abs(margin)
-  if (magnitude <= 2) return 1
-  if (magnitude <= 6) return 2
-  if (magnitude <= 12) return 3
+export function computeFumbleWounds(margin: number, fumbleNumber: number): number {
+  if (margin >= 0) return 0 // hit or tie: never a Fumble
+  const miss = -margin
+  if (miss < fumbleNumber) return 0 // missed, but not a Fumble
+  const past = miss - fumbleNumber
+  if (past <= 2) return 1
+  if (past <= 6) return 2
+  if (past <= 12) return 3
   return 4
 }
 

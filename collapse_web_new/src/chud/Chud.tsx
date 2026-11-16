@@ -19,7 +19,7 @@ import { clampApproachToCore, clampCore } from "../domain/coreApproachMap";
 import { computeWardrobeBonuses } from "../domain/wardrobeBonus";
 import { loadState, readGearData, readWardrobeData } from "../utils/chudPersistence";
 import { wardrobeKey, deckBuilderKey } from "../utils/slotKeys";
-import { adjustGlobalMeters, resetApproachOverload, setVanillaBridgeSlot } from "../utils/chudVanillaBridge";
+import { adjustGlobalMeters, resetApproachOverload, resetGanbareCharges, setVanillaBridgeSlot } from "../utils/chudVanillaBridge";
 import { fullRestEngrams, readEngramState, spendAllEngramCharges, type EngramManagerState } from "../utils/engramState";
 import { engramCatalog } from "../data/handbook/engramCatalog";
 import {
@@ -361,7 +361,10 @@ export default function Chud() {
         if (n.effect.grit != null || n.effect.collapse != null) {
           adjustGlobalMeters({ grit: n.effect.grit, collapse: n.effect.collapse });
         }
-        if (n.effect.restoreOverload) resetApproachOverload(STORAGE_KEY);
+        if (n.effect.restoreOverload) {
+          resetApproachOverload(STORAGE_KEY);
+          resetGanbareCharges(STORAGE_KEY);
+        }
         if (n.effect.fullEngramRestore) fullRestEngrams(DECK_BUILDER_KEY);
         if (n.kind === "hp-zero") {
           const pathLabel = collapsePath ? `${collapsePath[0].toUpperCase()}${collapsePath.slice(1)}` : null;

@@ -656,7 +656,7 @@ function buildStatusRollsPanel() {
   const normalizeName = (s) => String(s || '').trim().toLowerCase()
   const byName = new Map(STATUS_EFFECTS_CATALOG.map((it) => [normalizeName(it.name), it]))
   const clampStatusRoll = (n) => Math.max(0, Math.min(STATUS_ROLL_MAX, Number.isFinite(n) ? n : 0))
-  const newRow = () => ({ id: `sr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: '', effect: '', roll: 0, direction: 'in' })
+  const newRow = () => ({ id: `sr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: '', effect: '', roll: 0, direction: 'in', firstRollDone: false })
   const APPROACH_LABELS = [
     ['force', 'Force'], ['finesse', 'Finesse'], ['guts', 'Guts'],
     ['logic', 'Logic'], ['show', 'Show'], ['tell', 'Tell'],
@@ -731,6 +731,30 @@ function buildStatusRollsPanel() {
       window.dispatchEvent(new StorageEvent('storage', { key: CHUD_STATE_KEY, newValue: json, storageArea: localStorage }))
     } catch {}
   }
+  // Wardrobe dice overloaded during a Save spend from their own separate
+  // pool (approachWardrobeOverloadSpent), same as a normal Method roll's
+  // Overload — see chudVanillaBridge.ts's resetApproachOverload, which
+  // resets both pools together.
+  const readWardrobeOverloadSpent = (field) => {
+    try {
+      const s = JSON.parse(localStorage.getItem(CHUD_STATE_KEY) || '{}')
+      const spent = s?.approachWardrobeOverloadSpent
+      const n = spent && typeof spent === 'object' ? Number(spent[field]) : 0
+      return Number.isFinite(n) && n > 0 ? n : 0
+    } catch { return 0 }
+  }
+  const writeWardrobeOverloadSpent = (field, next) => {
+    try {
+      const raw = localStorage.getItem(CHUD_STATE_KEY)
+      const parsed = raw ? JSON.parse(raw) : {}
+      const spentMap = parsed.approachWardrobeOverloadSpent && typeof parsed.approachWardrobeOverloadSpent === 'object'
+        ? { ...parsed.approachWardrobeOverloadSpent } : {}
+      spentMap[field] = next
+      const json = JSON.stringify({ ...parsed, approachWardrobeOverloadSpent: spentMap })
+      localStorage.setItem(CHUD_STATE_KEY, json)
+      window.dispatchEvent(new StorageEvent('storage', { key: CHUD_STATE_KEY, newValue: json, storageArea: localStorage }))
+    } catch {}
+  }
   const hydrateRows = (rows) => {
     const safe = (Array.isArray(rows) ? rows : []).slice(0, STATUS_ROLL_MAX_ROWS).map((row, idx) => {
       const name = String(row?.name || '')
@@ -742,6 +766,7 @@ function buildStatusRollsPanel() {
         effect,
         roll: clampStatusRoll(Number(row?.roll ?? 0)),
         direction: row?.direction === 'out' ? 'out' : 'in',
+        firstRollDone: row?.firstRollDone === true,
       }
     })
     while (safe.length < STATUS_ROLL_DEFAULT_ROWS) safe.push(newRow())
@@ -862,40 +887,27 @@ function buildStatusRollsPanel() {
       const { approach } = readApproachState()
       const base = Number(approach?.[field]) || 0
       const { bonus: wardrobeBonus, items: wardrobeItems } = readWardrobeBonus(field)
-      // Base rating alone is the track/Overload-spendable pool — matches
-      // ApproachDie.tsx's base-only pool. Wardrobe dice always roll in
-      // addition (see rollBtn handler below) but are never armed/tracked.
       const rating = Math.min(STAT_AND_METHOD_MAX, base)
-      let spent = readOverloadSpent(field)
-      let available = Math.max(0, rating - spent)
-      let armed = 0
-      let armedFading = false
-      let armedFadeTimer = null
-      let armedIdleTimer = null
+      let baseSpent = readOverloadSpent(field)
+      let baseAvailable = Math.max(0, rating - baseSpent)
+      let wardrobeSpent = readWardrobeOverloadSpent(field)
+      let wardrobeAvailable = Math.max(0, wardrobeBonus - wardrobeSpent)
+      // The handbook always rolls the entire available pool — there's no
+      // manual "arm fewer dice than you have" step. Total dice this roll
+      // (base + Wardrobe) is capped at STAT_AND_METHOD_MAX (6), same as a
+      // normal Method roll; any excess is truncated from the Wardrobe side
+      // only, since the base pool is already assumed to be ≤ the cap.
+      const rolledBaseCount = baseAvailable
+      const rolledWardrobeCount = Math.max(0, Math.min(wardrobeAvailable, STAT_AND_METHOD_MAX - rolledBaseCount))
+      const rollCount = rolledBaseCount + rolledWardrobeCount
       let dice = null
       const overloadedSet = new Set()
-
-      // Mirrors the real Approach die: an armed-but-unrolled die that sits
-      // idle for 30s fades out over the last second as a warning, then
-      // un-arms itself. Any change to `armed` restarts this.
-      const clearArmedTimers = () => {
-        if (armedFadeTimer !== null) { clearTimeout(armedFadeTimer); armedFadeTimer = null }
-        if (armedIdleTimer !== null) { clearTimeout(armedIdleTimer); armedIdleTimer = null }
-      }
-      const scheduleArmedTimers = () => {
-        clearArmedTimers()
-        armedFading = false
-        if (armed <= 0) return
-        armedFadeTimer = setTimeout(() => { armedFading = true; renderPips() }, 29000)
-        armedIdleTimer = setTimeout(() => { armed = 0; armedFading = false; renderPips() }, 30000)
-      }
 
       const backBtn = document.createElement('button')
       backBtn.className = 'status-roll-save-back'
       backBtn.setAttribute('data-touch-blocker-ignore', '')
       backBtn.textContent = '← Choose Method'
-      backBtn.addEventListener('click', () => { clearArmedTimers(); renderApproachPicker() })
-      closeBtn.addEventListener('click', clearArmedTimers)
+      backBtn.addEventListener('click', () => renderApproachPicker())
 
       const pips = document.createElement('div')
       pips.className = 'status-roll-save-pips'
@@ -925,6 +937,9 @@ function buildStatusRollsPanel() {
       result.className = 'status-roll-save-result'
       result.style.display = 'none'
 
+      // Static display of the printed 1-6 track and how many of those dice
+      // (plus Wardrobe) are about to roll — no arming click, the pool
+      // always rolls in full.
       const renderPips = () => {
         pips.innerHTML = ''
         if (wardrobeBonus > 0) {
@@ -934,48 +949,25 @@ function buildStatusRollsPanel() {
           badge.textContent = `+${wardrobeBonus} 👕`
           pips.appendChild(badge)
         }
-        // Always show the full 1-6 track from the printed sheet (a Method
-        // can never rate above 6 — handbook's Stat/Method cap), not just
-        // what's currently available: an Overloaded-and-spent die's pip
-        // stays visible (dimmed) instead of vanishing, and circles past the
-        // current rating are locked. Mirrors ApproachDie.tsx.
         for (let i = 0; i < 6; i++) {
           const slotNumber = i + 1
           const isUnlocked = slotNumber <= rating
-          const isAvailable = isUnlocked && i < available
-          const isArmed = isAvailable && i < armed
+          const isAvailable = isUnlocked && i < baseAvailable
+          const isArmed = isAvailable && i < rolledBaseCount
           const pip = document.createElement('span')
-          pip.className = `status-roll-save-pip${isUnlocked ? '' : ' locked'}${isArmed ? ' armed' : ''}${isArmed && armedFading ? ' fading' : ''}${isUnlocked && !isAvailable ? ' spent' : ''}`
+          pip.className = `status-roll-save-pip${isUnlocked ? '' : ' locked'}${isArmed ? ' armed' : ''}${isUnlocked && !isAvailable ? ' spent' : ''}`
           pip.textContent = String(slotNumber)
           pips.appendChild(pip)
         }
-        armedHint.textContent = available <= 0
-          ? (rating > 0 ? 'Exhausted' : 'No dice')
-          : `Armed ${armed} / ${available}`
-        rollBtn.disabled = armed <= 0
+        armedHint.textContent = rollCount <= 0
+          ? (rating > 0 || wardrobeBonus > 0 ? 'Exhausted' : 'No dice')
+          : `Rolling ${rollCount} die${rollCount === 1 ? '' : 'ce'}${rolledWardrobeCount > 0 ? ` (${rolledBaseCount} base + ${rolledWardrobeCount} Wardrobe)` : ''}`
+        rollBtn.disabled = rollCount <= 0
       }
-
-      const flashPipsError = () => {
-        pips.classList.add('error-flash')
-        setTimeout(() => pips.classList.remove('error-flash'), 420)
-      }
-
-      pips.addEventListener('click', () => {
-        if (dice) return // already rolled this round — back out to reroll
-        if (armed >= available) { flashPipsError(); return }
-        armed += 1
-        renderPips()
-        scheduleArmedTimers()
-      })
 
       rollBtn.addEventListener('click', () => {
-        if (armed <= 0) return
-        clearArmedTimers()
-        // Wardrobe dice always roll alongside the armed base-pool dice —
-        // "Wardrobe adds dice to that Method's roll only" — but aren't
-        // armed/tracked themselves, so they're added here rather than to
-        // `armed`.
-        dice = rollMethodDice(armed + wardrobeBonus)
+        if (rollCount <= 0) return
+        dice = rollMethodDice(rollCount)
         overloadedSet.clear()
         pips.style.display = 'none'
         armedHint.style.display = 'none'
@@ -1002,13 +994,21 @@ function buildStatusRollsPanel() {
         const topValue = values.length ? Math.max(...values) : null
         ;(dice ?? []).forEach((value, index) => {
           const isTop = values[index] === topValue
+          const isWardrobeDie = index >= rolledBaseCount
+          // Only one die may be Overloaded per roll, same as the React
+          // Approach die — and each pool (base vs Wardrobe) is only
+          // spendable if that pool still has dice available.
+          const poolAvailable = isWardrobeDie ? wardrobeAvailable : baseAvailable
+          const canOverload = overloadedSet.size === 0 && poolAvailable > 0
           const chip = document.createElement('button')
           chip.className = `status-roll-save-chip${overloadedSet.has(index) ? ' overloaded' : ''}${isTop ? ' top' : ''}`
           chip.setAttribute('data-touch-blocker-ignore', '')
-          chip.disabled = overloadedSet.has(index) || available <= 0
+          chip.disabled = overloadedSet.has(index) || !canOverload
           chip.title = overloadedSet.has(index)
             ? 'Already Overloaded'
-            : 'Tap to Overload: double this die, spend 1 from the Method pool'
+            : (overloadedSet.size > 0
+              ? 'Only one die can be Overloaded per roll'
+              : `Tap to Overload: double this die, spend 1 from the ${isWardrobeDie ? 'Wardrobe' : 'Method'} pool`)
           chip.textContent = `D${METHOD_DIE}: ${value}`
           if (overloadedSet.has(index)) {
             const tag = document.createElement('span')
@@ -1017,10 +1017,18 @@ function buildStatusRollsPanel() {
             chip.appendChild(tag)
           }
           chip.addEventListener('click', () => {
-            if (overloadedSet.has(index) || available <= 0) return
-            spent += 1
-            writeOverloadSpent(field, spent)
-            available = Math.max(0, rating - spent)
+            if (overloadedSet.has(index) || overloadedSet.size > 0) return
+            if (isWardrobeDie) {
+              if (wardrobeAvailable < 1) return
+              wardrobeSpent += 1
+              writeWardrobeOverloadSpent(field, wardrobeSpent)
+              wardrobeAvailable = Math.max(0, wardrobeBonus - wardrobeSpent)
+            } else {
+              if (baseAvailable < 1) return
+              baseSpent += 1
+              writeOverloadSpent(field, baseSpent)
+              baseAvailable = Math.max(0, rating - baseSpent)
+            }
             overloadedSet.add(index)
             renderDiceChips()
           })
@@ -1030,26 +1038,46 @@ function buildStatusRollsPanel() {
         total.className = 'status-roll-save-total'
         total.textContent = `Total: ${currentTotal()}`
         diceWrap.appendChild(total)
-        poolHint.textContent = `Overload pool remaining: ${available}/${rating}`
+        poolHint.textContent = `Overload pool remaining: ${baseAvailable}/${rating} base${wardrobeBonus > 0 ? `, ${wardrobeAvailable}/${wardrobeBonus} Wardrobe` : ''}`
       }
 
       applyBtn.addEventListener('click', () => {
         const total = currentTotal()
         const atRollTime = row.roll
         result.style.display = 'block'
+        // The very first Save roll on a row just establishes/confirms the
+        // Set — it never Decays it, pass or fail. Decay only kicks in from
+        // the second roll onward.
+        if (!row.firstRollDone) {
+          row.firstRollDone = true
+          persist()
+          if (total >= atRollTime) {
+            result.setAttribute('data-outcome', 'pass')
+            result.textContent = `SAVED — rolled ${total} vs ${atRollTime}`
+            markCleared(row)
+          } else {
+            result.setAttribute('data-outcome', 'fail')
+            result.textContent = `First Save — rolled ${total} vs ${atRollTime}, no Decay yet`
+          }
+          renderRows()
+          applyBtn.style.display = 'none'
+          return
+        }
         if (total >= atRollTime) {
           result.setAttribute('data-outcome', 'pass')
           result.textContent = `SAVED — rolled ${total} vs ${atRollTime}`
           markCleared(row)
         } else {
-          // The Set drops to the amount the roll missed by (p36), not to
-          // whatever the roll itself came out to.
+          // The Set drops to the amount the roll missed by (p36). The
+          // amount the Set actually decreases by is algebraically equal to
+          // the roll's own total (atRollTime - margin === total), so the
+          // label shows `total`, not the margin.
           const margin = atRollTime - total
           row.roll = margin
           persist()
           target.textContent = `Set Roll: ${row.roll}`
           result.setAttribute('data-outcome', 'fail')
-          result.textContent = `DECAYED -${margin} — rolled ${total} vs ${atRollTime}, now ${row.roll}`
+          result.textContent = `DECAYED -${total} — rolled ${total} vs ${atRollTime}, now ${row.roll}`
         }
         renderRows()
         applyBtn.style.display = 'none'

@@ -478,7 +478,6 @@ const STATUS_EFFECTS_CATALOG: { name: string; effect: string }[] = [
   { name: "Frightened", effect: "Must remain adjacent to fear source" },
   { name: "Crushed", effect: "Double AP Costs" },
   { name: "Confused", effect: "Roll twice, take lower" },
-  { name: "Hacked", effect: "Roll 1d4, control target for that # of Turns" },
   { name: "Discombobulated", effect: "Roll 1d4, on 1, Combat Actions hit a random target" },
   { name: "Focused", effect: "On rolls, roll twice, take higher" },
   { name: "Shielded", effect: "Damage halved" },
@@ -494,7 +493,8 @@ const STATUS_EFFECTS_CATALOG: { name: string; effect: string }[] = [
   { name: "Pressured", effect: "Cannot Flank or gain positional bonuses" },
   { name: "Exhausted", effect: "Reduce all AO/PCDC rolls by 1d4" },
   { name: "Downed", effect: "Out of the fight, must be revived" },
-  { name: "Desynced", effect: "You are Desynced" },
+  { name: "Hidden", effect: "+1d6 to Finesse, Logic and Show rolls. Found by a Perception check that meets or beats your Set; if found, lose Hidden and become Exposed." },
+  { name: "Reckless", effect: "+1d6 to Force, Guts and Tell rolls. Stopped by a Method roll (Roleplay Action) that meets or beats your Set; if stopped, lose Reckless and become Exposed." },
 ];
 
 function normalizeStatusName(s: string): string {

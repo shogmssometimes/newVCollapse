@@ -11,10 +11,7 @@ import {
   readHpCounter,
   readCore,
   maxGritForCollapse,
-  resetApproachOverload,
-  resetGanbareCharges,
 } from "../../utils/chudVanillaBridge";
-import { fullRestEngrams } from "../../utils/engramState";
 
 function readState(storageKey: string): Record<string, unknown> {
   try {
@@ -161,14 +158,4 @@ export function RestWidget({
       </div>
     </div>
   );
-}
-
-// Applies an accepted "full-rest" notification's Engram/Method-dice side
-// effects (the Grit/HP deltas go through the normal effect-application path
-// already shared by every notification kind). Exported so the header bell
-// and Chud.tsx's resolver can call it without duplicating the logic.
-export function applyFullRestExtras(chudStateKey: string, deckBuilderStorageKey: string): void {
-  resetApproachOverload(chudStateKey);
-  resetGanbareCharges(chudStateKey);
-  fullRestEngrams(deckBuilderStorageKey);
 }

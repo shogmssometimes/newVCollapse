@@ -1,15 +1,15 @@
 import { useRef, useState } from "react";
 import { engramCatalogById } from "../../data/handbook/engramCatalog";
-import { addEngramCharge, spendEngramCharges, type EngramManagerState } from "../../utils/engramState";
+import { spendEngramCharges, type EngramManagerState } from "../../utils/engramState";
 import { STANDARD_LONG_PRESS_MS } from "../../utils/gestureConstants";
 
 const SWIPE_THRESHOLD_PX = 30;
 
 // Swipeable Engram queue widget — mirrors GearBriefWidget's layout, but with
 // its own gesture set: swipe left/right to cycle through every *equipped*
-// Engram (not just ones with charges left); a tap adds back one charge
-// (manual stack top-up), cycling back to 0 if it's already at max; a
-// long-press opens an info popup for the Engram on screen.
+// Engram (not just ones with charges left); a tap spends 1 charge (charges
+// can only be refilled by Full Rest, never by tapping); a long-press opens
+// an info popup for the Engram on screen.
 export function EngramBriefWidget({
   state,
   storageKey,
@@ -28,8 +28,8 @@ export function EngramBriefWidget({
   const holdFired = useRef(false);
 
   // Show every equipped Engram (copies > 0), regardless of current charge
-  // count — a depleted Engram still needs to appear so its charge can be
-  // topped back up with a tap.
+  // count — a depleted Engram still needs to appear in the cycle, it just
+  // can't be spent again until recharged by a Full Rest.
   const activeEntries = Object.entries(state.equipped)
     .filter(([, e]) => e.copies > 0)
     .map(([id, e]) => ({ id, ...e, name: engramCatalogById[id]?.name ?? id }));
@@ -159,14 +159,11 @@ export function EngramBriefWidget({
           if (dx < 0) next(); else prev();
           return;
         }
-        // A tap (no drag, no hold) adds one charge; at max, a tap cycles
-        // back down to 0 instead of being a no-op.
-        if (entry) {
-          if (entry.charges < entry.copies) {
-            addEngramCharge(storageKey, entry.id);
-          } else if (entry.charges > 0) {
-            spendEngramCharges(storageKey, entry.id, entry.charges);
-          }
+        // A tap spends 1 charge; charges can only ever be refilled by Full
+        // Rest (or equivalent), never by tapping — there is no more
+        // free-recharge-via-tap. A tap while already at 0 is a no-op.
+        if (entry && entry.charges > 0) {
+          spendEngramCharges(storageKey, entry.id, 1);
           setFlashIn(true);
           setTimeout(() => setFlashIn(false), 300);
         }

@@ -225,10 +225,11 @@ const FIELD_STYLE: React.CSSProperties = {
   pointerEvents: 'auto',
 }
 
-function SlotRow({ index, entry, onChange }: {
+function SlotRow({ index, entry, onChange, overCapacity }: {
   index: number
   entry: SlotEntry
   onChange: (entry: SlotEntry) => void
+  overCapacity?: boolean
 }) {
   const [pressing, setPressing] = useState(false)
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -259,9 +260,10 @@ function SlotRow({ index, entry, onChange }: {
         gridTemplateColumns: '1.4rem 2rem 1fr 5rem 3.5rem',
         gap: '4px 8px',
         alignItems: 'center',
+        ...(overCapacity ? { outline: '1px solid rgba(255,100,100,0.35)', borderRadius: 6, padding: '2px 4px' } : {}),
       }}
     >
-      <span style={{ fontSize: '0.65rem', color: 'var(--muted)', textAlign: 'right', paddingRight: 2 }}>
+      <span style={{ fontSize: '0.65rem', color: overCapacity ? 'rgba(255,100,100,0.9)' : 'var(--muted)', textAlign: 'right', paddingRight: 2 }}>
         {index + 1}
       </span>
       {/* Use button: shared long-press visual (same fill used by every
@@ -338,10 +340,11 @@ function SlotRow({ index, entry, onChange }: {
   )
 }
 
-function InventoryEntries({ count, entries, onEntryChange }: {
+function InventoryEntries({ count, entries, onEntryChange, capacity }: {
   count: number
   entries: SlotEntry[]
   onEntryChange: (index: number, entry: SlotEntry) => void
+  capacity: number
 }) {
   if (count === 0) return null
   return (
@@ -370,6 +373,7 @@ function InventoryEntries({ count, entries, onEntryChange }: {
             index={i}
             entry={entries[i] ?? EMPTY_ENTRY}
             onChange={e => onEntryChange(i, e)}
+            overCapacity={i >= capacity}
           />
         ))}
       </div>
@@ -641,18 +645,19 @@ export default function GearPage({
   }
 
   // Quick-add from the gear browser: bump qty on a matching inventory slot, or
-  // fill the first empty visible slot with this item at qty 1.
+  // fill the first empty slot (anywhere across all 18 slots, not just the
+  // Vigor-derived visible count) with this item at qty 1.
   const handleQuickAdd = (item: GearItem) => {
     setEntries(prev => {
       const next = [...prev]
-      const existingIndex = next.slice(0, inventorySlots).findIndex(e => e.name === item.name)
+      const existingIndex = next.findIndex(e => e.name === item.name)
       if (existingIndex !== -1) {
         const current = parseFloat(next[existingIndex].qty)
         const newQty = (!isNaN(current) ? current : 0) + 1
         next[existingIndex] = { ...next[existingIndex], qty: String(newQty) }
         return next
       }
-      const emptyIndex = next.slice(0, inventorySlots).findIndex(e => !e.name)
+      const emptyIndex = next.findIndex(e => !e.name)
       if (emptyIndex !== -1) {
         next[emptyIndex] = {
           name: item.name,
@@ -666,15 +671,18 @@ export default function GearPage({
 
   const inventorySlots = chudSlots ?? 6
 
+  // Sum across ALL slots (not just the Vigor-derived visible count) so
+  // anything stashed beyond capacity still counts toward the total and can
+  // actually trigger Over-Encumbered.
   const slotsUsed = useMemo(() => {
     let total = 0
-    for (let i = 0; i < inventorySlots; i++) {
+    for (let i = 0; i < entries.length; i++) {
       const e = entries[i]
       if (!e) continue
       total += parseNonNegativeInt(e.units) * parseNonNegativeInt(e.qty)
     }
     return total
-  }, [entries, inventorySlots])
+  }, [entries])
 
   useEffect(() => {
     localStorage.setItem(gearSlotsStorageKey, JSON.stringify({ entries, slotsUsed }))
@@ -768,7 +776,7 @@ export default function GearPage({
         )}
       </div>
 
-      <InventoryEntries count={inventorySlots} entries={entries} onEntryChange={handleEntryChange} />
+      <InventoryEntries count={MAX_INVENTORY_SLOTS} capacity={inventorySlots} entries={entries} onEntryChange={handleEntryChange} />
 
       {/* ── Wardrobe ─────────────────────────────────────── */}
       <div style={{ marginTop: 32, marginBottom: 32 }}>

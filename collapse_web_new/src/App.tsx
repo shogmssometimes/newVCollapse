@@ -555,6 +555,7 @@ export default function App() {
         case "chud":      return "#/chud";
         case "csmatrix":  return "#/csmatrix";
         case "gear":      return "#/gear";
+        case "notes":     return "#/notes";
         case "char-mgmt": return "#/char-mgmt";
         case "profile":   return "#/profile";
         case "aag":       return "#/aag";

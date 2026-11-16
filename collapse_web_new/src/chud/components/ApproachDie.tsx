@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import type { CSSProperties } from "react"
 import { createPortal } from "react-dom"
 import type { ApproachDieResult, ApproachRollResult, DieSides } from "../../domain/approachDice"
-import { rollFlatDice, computeMarginWounds } from "../../domain/approachDice"
+import { rollFlatDice, computeFumbleWounds } from "../../domain/approachDice"
 import { addSetRollRow } from "../../utils/chudVanillaBridge"
 import { pushNotification } from "../../domain/notifications"
 import { STAT_AND_METHOD_MAX } from "../../domain/coreApproachMap"
@@ -283,7 +283,11 @@ export function ApproachDie({
   // Spent Wardrobe dice (Overloaded away) don't get rolled either, same as
   // spent base dice — so this uses wardrobeAvail (current), not wardrobeBonus
   // (total capacity, used only for the track's slot count).
-  const poolMax = Math.max(0, available) + Math.max(0, wardrobeAvail)
+  // Methods cap out at STAT_AND_METHOD_MAX (6) dice per roll regardless of
+  // rating or Wardrobe bonus — Wardrobe dice beyond that cap simply don't
+  // get rolled (truncated from the Wardrobe side only; `available`, the
+  // base pool, is assumed to already be ≤ the cap via existing track logic).
+  const poolMax = Math.min(STAT_AND_METHOD_MAX, Math.max(0, available) + Math.max(0, wardrobeAvail))
 
   const rollPool = (count: number) => {
     if (count <= 0) {
@@ -516,7 +520,11 @@ export function ApproachDie({
   // arming cancels the whole press, same guard the Method row's own
   // hold-then-swipe uses.
   const handleDiePointerDown = (index: number, event: React.PointerEvent<HTMLButtonElement>) => {
-    if (resolvedRef.current) return
+    // Note: NOT gated on resolvedRef — Send to Set/Margin/Confirm must
+    // keep working after a Confirm resolves the pending Overload. Only
+    // the Overload-specific actions (addOverload/removeOverload below)
+    // stay guarded by resolvedRef, so a resolved die can no longer be
+    // doubled or un-doubled, but every other die gesture keeps working.
     dieSuppressClick.current = false
     dieSwipeDirRef.current = null
     setDieSwipeDir(null)
@@ -614,36 +622,24 @@ export function ApproachDie({
     const computed = (marginBase ?? displayTotal) - opposition
     setMargin(computed)
     setView("margin-result")
-    // A negative Margin is a failed roll — the handbook scales Wounds
-    // taken to how badly it failed by, but only on an Attack roll: a
-    // failed Save doesn't wound the one who rolled it, so this is gated
-    // the same way the Fumble check below already is. Surface a
-    // notification so the player explicitly applies it (accept = -HP)
-    // rather than silently losing HP the moment the popup shows the
-    // result.
-    const wounds = computeMarginWounds(computed)
-    if (!isSaveRoll && wounds > 0) {
-      pushNotification(
-        "margin-wound",
-        "Apply Wound",
-        `${label} failed by ${Math.abs(computed)} (Margin ${computed}) — apply ${wounds} Wound${wounds === 1 ? "" : "s"}.`,
-        { hp: -wounds }
-      )
-    }
-    // Fumble (handbook): only on an Attack roll (never a Save, never a
-    // tie), and only when the Defense Total beats the Attack Total by the
-    // Fumble Number (V+I+P) or more. This is a *separate* notification
-    // from the Wound above — it never auto-applies an effect, it just
-    // surfaces the severity number so the player/GM can resolve whatever
-    // consequence that severity calls for.
-    if (!isSaveRoll && computed < 0 && Math.abs(computed) >= fumbleNumber) {
-      const severity = computeMarginWounds(computed)
-      pushNotification(
-        "margin-fumble",
-        "Fumble!",
-        `${label}: the opposition beat you by ${Math.abs(computed)} (Fumble Number ${fumbleNumber > 0 ? -fumbleNumber : fumbleNumber}) — Fumble severity ${severity}.`,
-        {}
-      )
+    // Fumble/Wound (handbook): a failed Attack only takes Wounds if it's a
+    // genuine Fumble — the opposition beat the Attack Total by the Fumble
+    // Number (V+I+P) or more. A Save never Fumbles and never wounds the
+    // roller, no matter how badly it fails. There is exactly one
+    // notification for this (no separate "Apply Wound" notice) — it both
+    // names the Fumble and carries the HP effect to apply.
+    if (!isSaveRoll) {
+      const wounds = computeFumbleWounds(computed, fumbleNumber)
+      if (wounds > 0) {
+        const miss = -computed
+        const past = miss - fumbleNumber
+        pushNotification(
+          "margin-fumble",
+          "Fumble!",
+          `${label}: missed by ${miss} (Fumble Number ${fumbleNumber > 0 ? -fumbleNumber : fumbleNumber}, ${past} past) — take ${wounds} Wound${wounds === 1 ? "" : "s"}.`,
+          { hp: -wounds }
+        )
+      }
     }
   }
 

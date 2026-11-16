@@ -14,7 +14,6 @@ export type NotificationKind =
   | "hp-zero"
   | "dig-deep"
   | "grit-zero"
-  | "desync"
   | "collapse-table"
   | "choose-path"
   | "full-rest"
@@ -26,8 +25,6 @@ export type NotificationEffect = {
   hp?: number;
   grit?: number;
   collapse?: number;
-  /** Flips the HUD's Chip Sync indicator to Desynced when accepted. */
-  desync?: boolean;
   /** Full Rest: reset the Approach Overload pool (Method dice) to unspent. */
   restoreOverload?: boolean;
   /** Full Rest: refills every equipped Engram's charges to max. */

@@ -8,10 +8,10 @@ import type { CoreStats } from "../types/chud";
 import { computeDerived } from "../domain/chudStats";
 import { clampCore } from "../domain/coreApproachMap";
 import { queueHpZeroNotificationsIfNeeded } from "../domain/notifications";
-import { statusRollsKey, combatKey, csmatrixKey } from "./slotKeys";
+import { statusRollsKey, csmatrixKey } from "./slotKeys";
 
-// Set Rolls, Combat (chip-desync) and the CS Matrix graph (which also holds
-// the global Grit/Collapse meters) were previously read/written at these
+// Set Rolls and the CS Matrix graph (which also holds the global
+// Grit/Collapse meters) were previously read/written at these
 // fixed keys regardless of which character slot was active (B2). Each realm
 // that knows its active slot calls `setVanillaBridgeSlot` once so every
 // function below targets that slot's own data instead. Defaults to slot 1
@@ -23,13 +23,11 @@ export function setVanillaBridgeSlot(slot: number): void {
 }
 
 const STATUS_ROLLS_KEY = () => statusRollsKey(activeSlot);
-const COMBAT_KEY = () => combatKey(activeSlot);
 const CSMATRIX_KEY = () => csmatrixKey(activeSlot);
 const METER_MAX = 6;
 
 type StatusRollRow = { id: string; name: string; effect: string; roll: number };
 type StatusRollsState = { rows: StatusRollRow[] };
-type CombatState = { reactionTokens: number; chipDesynced: boolean; [key: string]: unknown };
 type GlobalMeters = { collapse?: number; grit?: number };
 type CSMatrixGraph = { nodes?: unknown[]; edges?: unknown[]; meta?: { globalMeters?: GlobalMeters; [key: string]: unknown } };
 
@@ -94,19 +92,6 @@ export function adjustGlobalMeters(delta: { grit?: number; collapse?: number }):
     const json = JSON.stringify(graph);
     window.localStorage.setItem(CSMATRIX_KEY(), json);
     notify(CSMATRIX_KEY(), json);
-  } catch {
-    // storage unavailable — ignore
-  }
-}
-
-/** Flips the HUD's Chip Sync indicator between Synced/Desynced. */
-export function setChipDesynced(desynced: boolean): void {
-  try {
-    const raw = window.localStorage.getItem(COMBAT_KEY());
-    const parsed: CombatState = raw ? JSON.parse(raw) : { reactionTokens: 0, chipDesynced: false };
-    const json = JSON.stringify({ ...parsed, chipDesynced: desynced });
-    window.localStorage.setItem(COMBAT_KEY(), json);
-    notify(COMBAT_KEY(), json);
   } catch {
     // storage unavailable — ignore
   }

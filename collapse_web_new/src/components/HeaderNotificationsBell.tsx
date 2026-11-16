@@ -8,7 +8,7 @@ import {
   setNotificationsSlot,
   type PendingNotification,
 } from "../domain/notifications";
-import { adjustGlobalMeters, adjustHpCounter, readCollapsePath, setChipDesynced, setCollapsePath, resetApproachOverload, setVanillaBridgeSlot } from "../utils/chudVanillaBridge";
+import { adjustGlobalMeters, adjustHpCounter, readCollapsePath, setCollapsePath, resetApproachOverload, setVanillaBridgeSlot } from "../utils/chudVanillaBridge";
 import { chudStateKey, deckBuilderKey } from "../utils/slotKeys";
 import { fullRestEngrams } from "../utils/engramState";
 
@@ -52,7 +52,6 @@ export function HeaderNotificationsBell({ charSlot }: { charSlot: number }) {
         if (n.effect.grit != null || n.effect.collapse != null) {
           adjustGlobalMeters({ grit: n.effect.grit, collapse: n.effect.collapse });
         }
-        if (n.effect.desync) setChipDesynced(true);
         if (n.effect.restoreOverload) resetApproachOverload(chudStateKey(charSlot));
         if (n.effect.fullEngramRestore) fullRestEngrams(deckBuilderKey(charSlot));
         if (n.kind === "hp-zero") {

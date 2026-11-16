@@ -8,7 +8,6 @@
   { "id": "engram-slowed", "name": "Slowed", "level": 1, "note": "Roll+xd4; Set", "effect": "Target receives the Slowed Status Effect; Any movement costs an Action instead" },
   { "id": "engram-bind", "name": "Bind", "level": 1, "note": "Roll+xd4; Set", "effect": "Target receives the Bound Status Effect; Cannot take movement actions" },
   { "id": "engram-weighted", "name": "Weighted", "level": 1, "note": "", "effect": "Roll Severity; on 4's gain and remove 10 points of temporary Readiness from a Target." },
-  { "id": "engram-blood-rage", "name": "Blood Rage", "level": 1, "note": "Roll+xd4", "effect": "On evens, gain 6 to your Total. On odds, lose 1 HP." },
   { "id": "engram-boon", "name": "Boon", "level": 1, "note": "Add xd4 to a Target's Total", "effect": "Add to the Target's Total" },
   { "id": "engram-curse", "name": "Curse", "level": 1, "note": "Remove xd4 from a Target's Total", "effect": "Remove from the Target's Total" },
   { "id": "engram-usurp", "name": "Usurp", "level": 3, "note": "Roll xd4", "effect": "Target removes that many Wound Dice from its Severity Roll" },
@@ -37,6 +36,5 @@
   { "id": "engram-energize", "name": "Energize", "level": 3, "note": "Roll xd4; Set", "effect": "Receive the Energized Status Effect; Gain +1 Non-Movement Action" },
   { "id": "engram-desync", "name": "Desync", "level": 3, "note": "Roll xd4; Set", "effect": "Receive the Desynced Status Effect; Enhancer is Desynced" },
   { "id": "engram-terrify", "name": "Terrify", "level": 2, "note": "Roll xd4; Set", "effect": "Target receives the Frightened Status Effect; Must remain Zone-adjacent to fear source" },
-  { "id": "engram-hack", "name": "Hack", "level": 3, "note": "Roll xd4; Set", "effect": "If the Target fails the Save, control the Target for # of Turns, where # is a roll of xd4" },
   { "id": "engram-teleport", "name": "Teleport", "level": 2, "note": "", "effect": "Swap Positions with Target Ally" }
 ]

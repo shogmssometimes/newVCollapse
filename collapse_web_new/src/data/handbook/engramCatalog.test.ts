@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest"
 import { engramCatalog } from "./engramCatalog"
 
 describe("Engram catalog (handbook Phase 8_Engrams)", () => {
-  it("has the handbook's full 40-Engram list", () => {
-    expect(engramCatalog.length).toBe(40)
+  it("has the current 38-Engram list (Blood Rage and Hack removed)", () => {
+    expect(engramCatalog.length).toBe(38)
   })
 
   it("has unique ids", () => {

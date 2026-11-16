@@ -139,6 +139,8 @@ export function ApproachPanel({
   onReceiveGanbare,
   approachWardrobeBonus,
   approachWardrobeItems,
+  engramOptions,
+  onSpendEngram,
 }: {
   core: CoreStats;
   approach: ApproachStats;
@@ -154,6 +156,10 @@ export function ApproachPanel({
   approachWardrobeBonus: Partial<Record<keyof ApproachStats, number>>;
   /** Wardrobe item names/bonuses contributing to each Method's bonus, for a tooltip. */
   approachWardrobeItems: Partial<Record<keyof ApproachStats, string[]>>;
+  /** Qualifying equipped Engrams with charges > 0 — every Method roll popup shares this same standby list. */
+  engramOptions: Array<{ id: string; name: string; charges: number }>;
+  /** Spends every charge of one Engram at once, permanently — tapping its standby icon is final, no undo/refund path. */
+  onSpendEngram: (engramId: string) => number;
 }) {
   const coreGroups = useMemo<Array<keyof CoreStats>>(() => ["vigor", "inference", "personality"], []);
   const fumbleNumber = useMemo(() => computeFumbleNumber(core), [core]);
@@ -268,6 +274,8 @@ export function ApproachPanel({
                     fumbleNumber={fumbleNumber}
                     onRoll={(count) => onRollApproachDie(field, count)}
                     onOverload={(baseCount, wardrobeCount) => onOverloadApproachDie(field, baseCount, wardrobeCount)}
+                    engramOptions={engramOptions}
+                    onSpendEngram={onSpendEngram}
                   />
                 );
               })}

@@ -14,7 +14,7 @@ const ROLL_ANIM_INTERVAL_MS = 60
 const ERROR_FLASH_MS = 420
 const VIBRATE_PIP_MS = 14
 // How long a swipe-committed die takes to fly off before its action
-// (Double/Margin/Send to Set/Cancel) actually applies.
+// (Double/Margin/Send to Set/Confirm) actually applies.
 const FLING_DURATION_MS = 220
 // Long-press (not a tap) to double a die — a plain tap on a die that's
 // already doubled cancels it instead (see handleDieClick).
@@ -32,8 +32,10 @@ const METHOD_SWIPE_PX = 10
 // Picking up a rolled die (post-result) reuses the same long-press-then-
 // swipe shape as rolling itself, but with 4 directions instead of 1:
 // once armed, swiping up doubles that die, down sends the Total to the
-// Set list, right starts the Margin flow, and left just cancels the
-// pick-up (back to the plain result — no popup close, no action taken).
+// Set list, right starts the Margin flow, and left Confirms (locks any
+// pending Overload in for good — back to the plain result, no popup
+// close). Closing the popup (X/outside tap) WITHOUT confirming first
+// instead Cancels any pending Overload — nothing spent.
 const DIE_PRE_ARM_CANCEL_PX = 8
 const DIE_SWIPE_PX = 18
 
@@ -62,10 +64,17 @@ const dieLabel = (die: DieSides) => `D${die}`
 // just tracked and capped separately from the base rating.
 //
 // Past the roll, the popup offers Overload: long-press a die to double it
-// (spending 1 from whichever pool that die came from — base or Wardrobe —
-// resolved together with any other pending doubles the moment the player
-// leaves this screen — Send to Set, Create Margin, or closing the popup). A quick tap on an already-doubled
-// die undoes it while the popup is still open. From there, two paths
+// (spending 1 from whichever pool that die came from — base or Wardrobe).
+// A quick tap on an already-doubled die undoes it while it's still only
+// *pending* — picking a die back up and swiping left now explicitly
+// Confirms it instead (locks the double in for good, same moment it
+// spends from its pool); Send to Set and a confirmed Margin also confirm
+// implicitly. Closing the popup (X or tapping outside) with a double
+// still only pending, never confirmed, Cancels it instead — nothing is
+// spent. Engrams tapped onto the roll (see engramOptions) are different:
+// they commit the instant they're tapped, with no pending/undo window at
+// all — there's no way to "unroll" that decision short of the charges
+// never having been spent in the first place. From there, two paths
 // continue: send the Total to the HUD's Set Roll list, or turn it into a
 // Margin against an Opposition roll. A positive Margin can then be spent
 // on a flat (non-exploding) Wound roll — individual dice are checked against a Wound
@@ -83,6 +92,8 @@ export function ApproachDie({
   fumbleNumber = 0,
   onRoll,
   onOverload,
+  engramOptions = [],
+  onSpendEngram,
 }: {
   label: string
   /** Core-distributed rating alone (before Wardrobe) — the track's full/ghost count and the base Overload-spendable pool size. */
@@ -102,6 +113,10 @@ export function ApproachDie({
   onRoll: (count: number) => ApproachDieRollResult
   /** Spends `baseCount` dice from the base pool and `wardrobeCount` from the Wardrobe pool at once (one per doubled die, resolved together). Returns false if either pool couldn't cover its full count. */
   onOverload?: (baseCount: number, wardrobeCount: number) => boolean
+  /** Qualifying equipped Engrams with charges > 0 — shown as tappable standby icons in the roll popup (same list shared by every Method). */
+  engramOptions?: Array<{ id: string; name: string; charges: number }>
+  /** Tapping an Engram icon spends ALL of its current charges at once, immediately and for good (no undo); returns how many were spent so this many d4s can be rolled and added to the Total. */
+  onSpendEngram?: (engramId: string) => number
 }) {
   const wardrobeAvail = wardrobeAvailable ?? wardrobeBonus
   const [errorFlash, setErrorFlash] = useState(false)
@@ -131,6 +146,13 @@ export function ApproachDie({
   const [damageDice, setDamageDice] = useState<number[]>([])
   const [woundValue, setWoundValue] = useState("")
   const [woundMode, setWoundMode] = useState<"threshold" | "target">("threshold")
+  // Engram bonus dice standby'd onto this roll — tapping an Engram icon
+  // spends ALL of its current charges at once and rolls that many d4s,
+  // grouped here and summed into the Total alongside the Method dice.
+  // Charges are spent immediately and permanently — unlike Overload below,
+  // there's no pending/undo window at all for an Engram once it's tapped;
+  // closing the popup can never claw it back.
+  const [engramBonus, setEngramBonus] = useState<Array<{ id: string; name: string; rolls: number[] }>>([])
   // Swipe-commit "fling" — the picked-up die flies off in the swipe
   // direction instead of the action applying (and the chip
   // disappearing/resetting) instantly, so the gesture reads as a deliberate
@@ -161,10 +183,12 @@ export function ApproachDie({
   // wardrobeAvail) came from Wardrobe (see `poolMax`/the roll-chip loop
   // below) — one die each, resolved together in a single call so the
   // parent's state update can't miss any (see the module doc comment on
-  // why resolving dice one-at-a-time in a loop used to under-spend).
-  // Idempotent via resolvedRef: once resolved, repeat calls (e.g. both a
-  // button press and the popup's own close) are no-ops rather than
-  // double-spending.
+  // why resolving dice one-at-a-time in a loop used to under-spend). This
+  // is the "Confirm" action (die-pickup swipe left, Send to Set, or a
+  // confirmed Margin) — closing the popup WITHOUT calling this first
+  // (see closePopup) is instead a Cancel: the pending double is just
+  // dropped, nothing spent. Idempotent via resolvedRef: once resolved,
+  // repeat calls are no-ops rather than double-spending.
   const resolveOverloadIfNeeded = useCallback(() => {
     if (resolvedRef.current) return
     resolvedRef.current = true
@@ -181,12 +205,15 @@ export function ApproachDie({
   }, [onOverload, pendingOverload, available])
 
   const closePopup = useCallback(() => {
-    // Closing the popup (via the X button or tapping outside) with
-    // Overloads still pending commits them — there's no separate
-    // Resolve/Undo step; un-doing a die happens by tapping it again while
-    // the popup is still open (see handleDieClick).
-    resolveOverloadIfNeeded()
-    resolvedRef.current = false
+    // Closing the popup (via the X button or tapping outside) now
+    // Cancels any Overload that's still only pending — nothing is spent.
+    // Confirming a double (so closing can't take it back) happens
+    // explicitly: picking the die back up and swiping left, or committing
+    // the roll via Send to Set / a confirmed Margin (see
+    // handleDiePointerUp/sendToSet/handleConfirmMargin) all resolve it for
+    // real first. Engrams are unaffected either way — they were already
+    // spent for good the instant they were tapped.
+    resolvedRef.current = true
     setResult(null)
     setRolling(false)
     setPendingOverload(new Set())
@@ -201,6 +228,7 @@ export function ApproachDie({
     setWoundMode("threshold")
     setArmedDieIndex(null)
     setDieFling(null)
+    setEngramBonus([])
     if (flingTimer.current !== null) {
       window.clearTimeout(flingTimer.current)
       flingTimer.current = null
@@ -209,7 +237,7 @@ export function ApproachDie({
       window.clearInterval(rollAnimTimer.current)
       rollAnimTimer.current = null
     }
-  }, [resolveOverloadIfNeeded])
+  }, [])
 
   // The result popup stays open until the player dismisses it (tap outside
   // or the close button) — it never times out on its own. The popup is
@@ -266,6 +294,7 @@ export function ApproachDie({
     resolvedRef.current = false
     setResult(null)
     setPendingOverload(new Set())
+    setEngramBonus([])
     setResolved(false)
     setView("result")
     setRolling(true)
@@ -376,15 +405,29 @@ export function ApproachDie({
     cancelGesture()
   }
 
-  // Overload doubles a die's face value. Nothing Explodes, so the Total is
-  // simply the single highest die in the pool after any Overloads.
+  // Overload doubles a die's face value. Nothing Explodes, so the Method's
+  // own Total is simply the single highest die in the pool after any
+  // Overloads — Engram bonus d4s (see engramBonus state) are a flat
+  // separate addition on top of that (handbook "Roll+xd4" notation: added
+  // to an existing roll, not part of the take-the-highest pool), so they're
+  // summed in afterward rather than folded into this max().
   const overloadedValue = (dieRoll: ApproachDieResult) => dieRoll.rolls[0] * 2
-  const displayTotal = result
+  const dieMax = result
     ? result.dice.reduce(
         (max, dieRoll, index) => Math.max(max, pendingOverload.has(index) ? overloadedValue(dieRoll) : dieRoll.total),
         0
       )
     : 0
+  // Only one die may be Overloaded per roll (see addOverload), so this is
+  // either empty or a single index — used for the popup total's doubling
+  // breakdown below, same idea as the Engram breakdown.
+  const overloadedIndex = pendingOverload.size > 0 ? Array.from(pendingOverload)[0] : null
+  const overloadedBaseValue = overloadedIndex !== null && result ? result.dice[overloadedIndex].total : null
+  const engramBonusTotal = engramBonus.reduce(
+    (sum, entry) => sum + entry.rolls.reduce((a, b) => a + b, 0),
+    0
+  )
+  const displayTotal = dieMax + engramBonusTotal
   // Picking up a die previews doubling it, but only once confirmed with a
   // long-press (a plain tap would be too easy to trigger by accident while
   // reading the result) — it's then auto-resolved (spent from its own
@@ -422,6 +465,24 @@ export function ApproachDie({
     })
   }
 
+  // Engram roller integration: tapping a standby icon spends ALL of that
+  // Engram's current charges in one gesture and rolls that many d4s,
+  // grouped as their own small chips and summed straight into the Total.
+  // This is final the instant it happens — there's no undo/refund path,
+  // tapping the resulting chip again does nothing (see its onClick below).
+  // No-op if the Engram has already been emptied elsewhere in the meantime
+  // (e.g. two Method popups open in quick succession) — onSpendEngram
+  // returns 0 in that case.
+  const addEngramBonus = (engramId: string) => {
+    if (!onSpendEngram) return
+    const option = engramOptions.find((entry) => entry.id === engramId)
+    if (!option) return
+    const amount = onSpendEngram(engramId)
+    if (amount <= 0) return
+    const rolls = rollFlatDice(amount, 4)
+    setEngramBonus((prev) => [...prev, { id: engramId, name: option.name, rolls }])
+  }
+
   const cancelDiePress = () => {
     if (diePressTimer.current !== null) {
       window.clearTimeout(diePressTimer.current)
@@ -449,9 +510,11 @@ export function ApproachDie({
   // the old immediate-double long-press), any swipe past DIE_SWIPE_PX in
   // one of the 4 cardinal directions fires that direction's action —
   // up doubles *this* die, down sends the Total to the Set list, right
-  // starts the Margin flow, left just cancels the pick-up (no action, no
-  // popup close). Moving too far before arming cancels the whole press,
-  // same guard the Method row's own hold-then-swipe uses.
+  // starts the Margin flow, left Confirms (locks in any pending Overload
+  // for good — same as Send to Set/a confirmed Margin resolving it — but
+  // without otherwise leaving the result screen). Moving too far before
+  // arming cancels the whole press, same guard the Method row's own
+  // hold-then-swipe uses.
   const handleDiePointerDown = (index: number, event: React.PointerEvent<HTMLButtonElement>) => {
     if (resolvedRef.current) return
     dieSuppressClick.current = false
@@ -526,10 +589,11 @@ export function ApproachDie({
       setDieFling({ index, dir: "right" }) // swipe right: Create Margin
       flingTimer.current = window.setTimeout(() => { startMargin(displayTotal); setDieFling(null) }, FLING_DURATION_MS)
     } else {
-      // swipe left: Cancel — just drop the pick-up, no action, but still
-      // fling it off so the cancel reads as a deliberate throw-away.
+      // swipe left: Confirm — locks in any pending Overload for good
+      // (burns its pool charge) without otherwise leaving the result
+      // screen; still flings it off so the gesture reads as deliberate.
       setDieFling({ index, dir: "left" })
-      flingTimer.current = window.setTimeout(() => setDieFling(null), FLING_DURATION_MS)
+      flingTimer.current = window.setTimeout(() => { resolveOverloadIfNeeded(); setDieFling(null) }, FLING_DURATION_MS)
     }
   }
 
@@ -551,11 +615,14 @@ export function ApproachDie({
     setMargin(computed)
     setView("margin-result")
     // A negative Margin is a failed roll — the handbook scales Wounds
-    // taken to how badly it failed by. Surface a notification so the
-    // player explicitly applies it (accept = -HP) rather than silently
-    // losing HP the moment the popup shows the result.
+    // taken to how badly it failed by, but only on an Attack roll: a
+    // failed Save doesn't wound the one who rolled it, so this is gated
+    // the same way the Fumble check below already is. Surface a
+    // notification so the player explicitly applies it (accept = -HP)
+    // rather than silently losing HP the moment the popup shows the
+    // result.
     const wounds = computeMarginWounds(computed)
-    if (wounds > 0) {
+    if (!isSaveRoll && wounds > 0) {
       pushNotification(
         "margin-wound",
         "Apply Wound",
@@ -567,14 +634,14 @@ export function ApproachDie({
     // tie), and only when the Defense Total beats the Attack Total by the
     // Fumble Number (V+I+P) or more. This is a *separate* notification
     // from the Wound above — it never auto-applies an effect, it just
-    // surfaces the same severity table so the player/GM can resolve
-    // whatever the book's Fumble entry calls for.
+    // surfaces the severity number so the player/GM can resolve whatever
+    // consequence that severity calls for.
     if (!isSaveRoll && computed < 0 && Math.abs(computed) >= fumbleNumber) {
       const severity = computeMarginWounds(computed)
       pushNotification(
         "margin-fumble",
         "Fumble!",
-        `${label}: the opposition beat you by ${Math.abs(computed)} (Fumble Number ${fumbleNumber > 0 ? -fumbleNumber : fumbleNumber}) — Fumble severity ${severity}. Check the Fumble Table.`,
+        `${label}: the opposition beat you by ${Math.abs(computed)} (Fumble Number ${fumbleNumber > 0 ? -fumbleNumber : fumbleNumber}) — Fumble severity ${severity}.`,
         {}
       )
     }
@@ -781,7 +848,7 @@ export function ApproachDie({
               <div className="approach-die-popup-die">
                 {result.dice.map((dieRoll, index) => {
                   const effectiveValue = pendingOverload.has(index) ? overloadedValue(dieRoll) : dieRoll.total
-                  const isTop = result.dice.length > 0 && effectiveValue === displayTotal
+                  const isTop = result.dice.length > 0 && effectiveValue === dieMax
                   const isPressing = pressingDieIndex === index
                   const isArmed = armedDieIndex === index
                   const fling = dieFling?.index === index ? dieFling.dir : null
@@ -804,8 +871,8 @@ export function ApproachDie({
                       }}
                       title={
                         pendingOverload.has(index)
-                          ? "Tap to undo this Overload"
-                          : "Hold, then swipe: up Doubles, down sends to Set, right starts Margin, left cancels"
+                          ? "Tap to undo this Overload · pick it up and swipe left to Confirm it for good"
+                          : "Hold, then swipe: up Doubles, down sends to Set, right starts Margin, left Confirms"
                       }
                     >
                       <span
@@ -818,8 +885,52 @@ export function ApproachDie({
                   )
                 })}
               </div>
+              {(engramBonus.length > 0 || engramOptions.length > 0) && (
+                <div className="approach-die-engram-row" aria-label="Engram roller">
+                  {engramBonus.map((entry) => (
+                    <span
+                      key={entry.id}
+                      className="approach-die-engram-chip spent"
+                      title={`${entry.name}: ${entry.rolls.join(" + ")} — spent, locked in for this roll`}
+                    >
+                      <span className="approach-die-engram-chip-name">{entry.name}</span>
+                      <span className="approach-die-engram-chip-dice">
+                        {entry.rolls.map((roll, index) => (
+                          <span key={index} className="approach-die-engram-die">{roll}</span>
+                        ))}
+                      </span>
+                    </span>
+                  ))}
+                  {engramOptions
+                    .filter((option) => !engramBonus.some((entry) => entry.id === option.id))
+                    .map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className="approach-die-engram-chip standby"
+                        onClick={(event) => { event.stopPropagation(); addEngramBonus(option.id) }}
+                        title={`Spend all ${option.charges} charge${option.charges === 1 ? "" : "s"} of ${option.name} (+${option.charges}d4 to the Total) — final, can't be undone`}
+                      >
+                        <span className="approach-die-engram-chip-name">{option.name}</span>
+                        <span className="approach-die-engram-chip-count">×{option.charges}</span>
+                      </button>
+                    ))}
+                </div>
+              )}
+              {(engramBonus.length > 0 || overloadedIndex !== null) && (
+                <div className="approach-die-popup-total">
+                  Total: {displayTotal}{" "}
+                  <span className="approach-die-popup-total-sub">
+                    (
+                    {overloadedIndex !== null && overloadedBaseValue !== null
+                      ? `${overloadedBaseValue} doubled to ${overloadedBaseValue * 2}`
+                      : `${dieMax} die`}
+                    {engramBonus.length > 0 ? ` + ${engramBonusTotal} Engram` : ""})
+                  </span>
+                </div>
+              )}
               <div className="approach-die-popup-swipe-hint">
-                ↑ Double · ↓ Send to Set · → Margin · ← Cancel
+                ↑ Double · ↓ Send to Set · → Margin · ← Confirm
               </div>
             </>
           )}

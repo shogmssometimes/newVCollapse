@@ -19,8 +19,9 @@ import { clampApproachToCore, clampCore } from "../domain/coreApproachMap";
 import { computeWardrobeBonuses } from "../domain/wardrobeBonus";
 import { loadState, readGearData, readWardrobeData } from "../utils/chudPersistence";
 import { wardrobeKey, deckBuilderKey } from "../utils/slotKeys";
-import { adjustGlobalMeters, setChipDesynced, resetApproachOverload, setVanillaBridgeSlot } from "../utils/chudVanillaBridge";
-import { fullRestEngrams, readEngramState, type EngramManagerState } from "../utils/engramState";
+import { adjustGlobalMeters, resetApproachOverload, setVanillaBridgeSlot } from "../utils/chudVanillaBridge";
+import { fullRestEngrams, readEngramState, spendAllEngramCharges, type EngramManagerState } from "../utils/engramState";
+import { engramCatalog } from "../data/handbook/engramCatalog";
 import {
   getNotificationsStorageKey,
   listNotifications,
@@ -51,8 +52,8 @@ const WARDROBE_KEY = wardrobeKey(_chudSlot);
 const DECK_BUILDER_KEY = deckBuilderKey(_chudSlot);
 
 // Point the shared notifications queue and the vanilla-bridge (Set Rolls,
-// Combat chip-desync, CS Matrix Grit/Collapse) at this iframe's own slot —
-// see B2 in slotKeys.ts for why these can't self-resolve a slot on their own.
+// CS Matrix Grit/Collapse) at this iframe's own slot — see B2 in
+// slotKeys.ts for why these can't self-resolve a slot on their own.
 setNotificationsSlot(_chudSlot);
 setVanillaBridgeSlot(_chudSlot);
 const DEFAULT_DAMAGE_DIE_SIZE: DieSides = 6;
@@ -299,6 +300,27 @@ export default function Chud() {
     return () => window.removeEventListener("storage", engramHandler);
   }, []);
 
+  // Method roll popup's Engram-icon row (B-whatever: Engrams-into-the-
+  // roller): every qualifying Engram (handbook catalog's rollsIntoMethod,
+  // i.e. not one of the handful that heal/target someone else's roll/do
+  // nothing-rollish at all) that's currently equipped with at least 1
+  // charge shows up as a tappable standby icon in any Method's roll popup.
+  // Tapping one is final — it spends every charge at once with no
+  // undo/refund path, so there's nothing else to wire up here besides the
+  // spend itself.
+  const engramRollerOptions = useMemo(
+    () =>
+      engramCatalog
+        .filter((entry) => entry.rollsIntoMethod)
+        .map((entry) => ({ id: entry.id, name: entry.name, charges: engramState.equipped[entry.id]?.charges ?? 0 }))
+        .filter((entry) => entry.charges > 0),
+    [engramState]
+  );
+  const spendEngramForRoll = useCallback(
+    (engramId: string): number => spendAllEngramCharges(DECK_BUILDER_KEY, engramId),
+    []
+  );
+
   useEffect(() => {
     const wardrobeHandler = (e: StorageEvent) => {
       if (e.key !== WARDROBE_KEY) return;
@@ -339,7 +361,6 @@ export default function Chud() {
         if (n.effect.grit != null || n.effect.collapse != null) {
           adjustGlobalMeters({ grit: n.effect.grit, collapse: n.effect.collapse });
         }
-        if (n.effect.desync) setChipDesynced(true);
         if (n.effect.restoreOverload) resetApproachOverload(STORAGE_KEY);
         if (n.effect.fullEngramRestore) fullRestEngrams(DECK_BUILDER_KEY);
         if (n.kind === "hp-zero") {
@@ -412,6 +433,8 @@ export default function Chud() {
                 onReceiveGanbare={receiveGanbare}
                 approachWardrobeBonus={approachWardrobeBonus}
                 approachWardrobeItems={approachWardrobeItems}
+                engramOptions={engramRollerOptions}
+                onSpendEngram={spendEngramForRoll}
               />
             }
           />

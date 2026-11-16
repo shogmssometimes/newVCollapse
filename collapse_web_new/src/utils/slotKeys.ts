@@ -26,7 +26,7 @@ export const profileKey = (slot: number): string =>
 
 // Added for B2 (per-slot isolation): Grit/Collapse (held inside the CS
 // Matrix's saved graph), the shared notifications queue, the CC wallet,
-// the Set Rolls/"status rows" widget, Combat's chip-desync flag, and the
+// the Set Rolls/"status rows" widget, Combat's reaction-tokens key, and the
 // Method panel's hide-unused-(0) toggle were all previously stored under a
 // single global key shared by every slot — switching slots left them
 // untouched instead of swapping in that slot's own values. Slot 1 reuses

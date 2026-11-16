@@ -13,7 +13,6 @@ const _slotKey = (legacyKey, strippedBase) => (_mbSlot === 1 ? legacyKey : `${st
 const STORAGE_KEY = _slotKey('csmatrix.graph', 'csmatrix.graph')
 const NOTIFICATIONS_KEY = _slotKey('chud.notifications.v1', 'chud.notifications')
 const WALLET_KEY = _slotKey('chud.wallet', 'chud.wallet')
-const COMBAT_KEY = _slotKey('combat.v1', 'combat')
 const STATUS_ROLLS_KEY = _slotKey('chud.statusRolls', 'chud.statusRolls')
 const UI_KEY = _slotKey('chud.ui.v1', 'chud.ui')
 const CHUD_STATE_KEY = _slotKey('chud.state.v1', 'chud.state')
@@ -389,10 +388,6 @@ function createStyles() {
     .chud-combat-body { display: none; padding: 8px 0 0; }
     .chud-combat-body.open { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
     .combat-body-row { display: flex; gap: 8px; align-items: stretch; }
-    .combat-chip-wrap { min-width: 0; display: flex; flex-direction: column; justify-content: center; }
-    .combat-chip-toggle { flex: 1; padding: 10px 8px; border: 1px solid rgba(74,222,128,0.4); border-radius: 10px; background: rgba(74,222,128,0.08); color: #4ade80; font-weight: 700; font-size: 10px; letter-spacing: 0.06em; cursor: pointer; transition: background 120ms, border-color 120ms, color 120ms, transform 80ms; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .combat-chip-toggle:active { transform: scale(0.97); }
-    .combat-chip-toggle[data-desynced="1"] { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.5); color: #f87171; }
 
     /* ── Range / Durability / Damage read-only row ── */
     .combat-info-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-items: stretch; }
@@ -626,52 +621,6 @@ function buildGritCollapseMeter(getMeters, setMeters) {
   update()
 
   return { container, update }
-}
-
-function readCombat() {
-  try {
-    const raw = localStorage.getItem(COMBAT_KEY)
-    if (!raw) return { reactionTokens: 0, chipDesynced: false }
-    return { reactionTokens: 0, chipDesynced: false, ...JSON.parse(raw) }
-  } catch { return { reactionTokens: 0, chipDesynced: false } }
-}
-
-function writeCombat(state) {
-  try {
-    const json = JSON.stringify(state)
-    localStorage.setItem(COMBAT_KEY, json)
-    window.dispatchEvent(new StorageEvent('storage', { key: COMBAT_KEY, newValue: json, storageArea: window.localStorage }))
-  } catch {}
-}
-
-function buildCombatPanel() {
-  // Reaction Tokens and the action/reaction Queue have been removed (player
-  // side no longer tracks them here). Chip Sync is preserved below.
-  const chipWrap = document.createElement('div')
-  chipWrap.className = 'combat-chip-wrap'
-  const chipBtn = document.createElement('button')
-  chipBtn.className = 'combat-chip-toggle'
-  chipBtn.setAttribute('data-touch-blocker-ignore', '')
-  chipWrap.appendChild(chipBtn)
-
-  const chipSection = document.createElement('div')
-  chipSection.className = 'chud-hp-queue-section'
-  chipSection.appendChild(chipWrap)
-
-  const refresh = () => {
-    const state = readCombat()
-    const desynced = !!state.chipDesynced
-    chipBtn.innerHTML = desynced ? 'Desynced' : 'Synced'
-    chipBtn.dataset.desynced = desynced ? '1' : '0'
-  }
-
-  chipBtn.addEventListener('click', () => {
-    const s = readCombat(); writeCombat({ ...s, chipDesynced: !s.chipDesynced }); refresh()
-  })
-
-  refresh()
-  window.addEventListener('storage', (ev) => { if (ev.key === COMBAT_KEY) refresh() })
-  return { chipSection }
 }
 
 function readStatusRolls() {
@@ -1547,12 +1496,11 @@ function mountMeters() {
   const gcm = buildGritCollapseMeter(getMeters, setMeters)
 
   // Set Rolls (Status Effects) mounts inside the HP box, directly below the
-  // Chip Sync control. Combat box (CR/FR) has been removed entirely; CR/FR
-  // now render read-only on the standalone AAG page, outside this iframe.
-  // Page 2 (including Damage die) also lives on the AAG page.
-  // Wallet + Reps now live on the standalone MGR page. Reaction Tokens and
-  // the action/reaction Queue have been removed (player side).
-  const { chipSection } = buildCombatPanel()
+  // HP bar. Combat box (CR/FR) has been removed entirely; CR/FR now render
+  // read-only on the standalone AAG page, outside this iframe. Page 2
+  // (including Damage die) also lives on the AAG page. Wallet + Reps now
+  // live on the standalone MGR page. Reaction Tokens, the action/reaction
+  // Queue, and the Chip Sync toggle have all been removed (player side).
   const statusRollsPanel = buildStatusRollsPanel()
   const setRollsAnchor = panel.querySelector('#chud-setrolls-anchor')
   if (setRollsAnchor) {
@@ -1565,11 +1513,6 @@ function mountMeters() {
     gcmAnchor.insertAdjacentElement('afterend', gcm.container)
   } else {
     panel.appendChild(gcm.container)
-  }
-  // Chip Sync mounts inside the HP box, directly below the HP bar.
-  const hpQueueAnchor = panel.querySelector('#chud-hp-queue-anchor')
-  if (hpQueueAnchor) {
-    hpQueueAnchor.insertAdjacentElement('afterend', chipSection)
   }
 
   const refreshAll = () => { gcm.update() }

@@ -89,6 +89,23 @@ export function addEngramCharge(storageKey: string, engramId: string): void {
   })
 }
 
+/** Spends every currently-charged use of one equipped Engram at once — the
+ * Method roll popup's Engram icon taps all of an Engram's charged stacks
+ * in a single gesture rather than one at a time. Returns how many charges
+ * were spent (0 if the Engram isn't equipped or already empty), so the
+ * caller knows how many bonus d4s to roll. */
+export function spendAllEngramCharges(storageKey: string, engramId: string): number {
+  const state = readEngramState(storageKey)
+  const current = state.equipped[engramId]
+  if (!current || current.charges <= 0) return 0
+  const amount = current.charges
+  writeEngramState(storageKey, {
+    ...state,
+    equipped: { ...state.equipped, [engramId]: { ...current, charges: 0 } },
+  })
+  return amount
+}
+
 /** Full Rest: every equipped Engram's charges refill to its copies count. */
 export function fullRestEngrams(storageKey: string): void {
   const state = readEngramState(storageKey)

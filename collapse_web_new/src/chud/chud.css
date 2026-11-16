@@ -1653,6 +1653,85 @@ body::after {
   text-align: center;
 }
 
+/* Engram roller row — standby icons for qualifying equipped Engrams
+   (charges > 0), plus already-tapped Engrams' own small d4 chips, grouped
+   below the Method dice. Wraps onto multiple lines rather than scrolling,
+   since the row can get long with several Engrams equipped. */
+.approach-die-engram-row {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  max-width: 100%;
+}
+
+.approach-die-engram-chip {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(248, 250, 252, 0.85);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.approach-die-engram-chip.standby {
+  cursor: pointer;
+  background: rgba(192, 132, 252, 0.1);
+  border-color: rgba(192, 132, 252, 0.45);
+  color: #e9d5ff;
+}
+
+.approach-die-engram-chip-count {
+  opacity: 0.8;
+  font-weight: 800;
+}
+
+.approach-die-engram-chip.spent {
+  /* Locked in the instant it was tapped — no undo, so it's a plain
+     non-interactive span now, not a button (see the JSX). */
+  background: rgba(192, 132, 252, 0.22);
+  border-color: #c084fc;
+}
+
+.approach-die-engram-chip-dice {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.approach-die-engram-die {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 5px;
+  background: rgba(192, 132, 252, 0.3);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.approach-die-popup-total {
+  margin-top: 8px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f8fafc;
+  text-align: center;
+}
+
+.approach-die-popup-total-sub {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: rgba(248, 250, 252, 0.55);
+}
+
 .approach-roll-path-btn {
   flex: 1;
   font: inherit;

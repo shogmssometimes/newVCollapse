@@ -656,10 +656,13 @@ export function ApproachDie({
   const successCount = hasWoundValue ? damageDice.filter(isSuccess).length : 0
 
   // Track geometry: a fixed 1-6 numbered circle row, like the printed
-  // sheet (a Method's base rating can never exceed STAT_AND_METHOD_MAX).
-  // Circles past baseRating + wardrobeBonus are locked (this Method
-  // hasn't grown a die there, nor does Wardrobe add one). Base and
-  // Wardrobe are two separate pools mechanically (different caps, spent
+  // sheet (a Method's base rating can never exceed STAT_AND_METHOD_MAX,
+  // and the combined pool — base + Wardrobe — never rolls more than
+  // STAT_AND_METHOD_MAX dice either, see `displayWardrobeBonus` above).
+  // Circles past baseRating + displayWardrobeBonus are locked (this
+  // Method hasn't grown a die there, nor does Wardrobe add one within
+  // the 6-die cap). Base and Wardrobe are two separate pools mechanically
+  // (different caps, spent
   // independently) but are shown as ONE combined countdown: every still-
   // available pip (base or Wardrobe) is drawn first (left), every spent
   // pip after (right), so the row always reads as a clean "available →
@@ -673,13 +676,17 @@ export function ApproachDie({
   // spent or restored.
   const trackMax = Math.min(STAT_AND_METHOD_MAX, baseRating)
   const trackCurrent = Math.max(0, Math.min(available, trackMax))
-  const wardrobeTrackCurrent = Math.max(0, Math.min(wardrobeAvail, wardrobeBonus))
-  const isDepleted = poolMax <= 0 && trackMax + wardrobeBonus > 0
-  // Normally exactly 6 grid columns, but Wardrobe can push the track past
-  // the sheet's 1-6 ceiling — grow the column count to fit when it does,
-  // so overflow slots still get their own equal-width column instead of
-  // cramming into the last one.
-  const totalSlots = Math.max(STAT_AND_METHOD_MAX, trackMax + wardrobeBonus)
+  // Methods cap out at STAT_AND_METHOD_MAX (6) dice per roll (see
+  // `poolMax` above) no matter how many Wardrobe pieces are stacked, so
+  // the display — track pips, locked slots, and the "plus X of Y from
+  // Wardrobe" label — must cap Wardrobe's contribution at whatever's left
+  // of that 6 after the base rating, instead of showing every Wardrobe
+  // die even past the point where it can ever actually roll.
+  const displayWardrobeBonus = Math.max(0, Math.min(wardrobeBonus, STAT_AND_METHOD_MAX - trackMax))
+  const displayWardrobeAvail = Math.min(wardrobeAvail, displayWardrobeBonus)
+  const wardrobeTrackCurrent = Math.max(0, Math.min(displayWardrobeAvail, displayWardrobeBonus))
+  const isDepleted = poolMax <= 0 && trackMax + displayWardrobeBonus > 0
+  const totalSlots = STAT_AND_METHOD_MAX
 
   const rollHint = poolMax <= 0
     ? "No dice"
@@ -697,7 +704,7 @@ export function ApproachDie({
       <button
         type="button"
         className="method-row-roll"
-        aria-label={`${label}, ${available} of ${baseRating} base dice available${wardrobeBonus > 0 ? `, plus ${wardrobeAvail} of ${wardrobeBonus} from Wardrobe` : ""}. ${rollHint}.`}
+        aria-label={`${label}, ${available} of ${baseRating} base dice available${displayWardrobeBonus > 0 ? `, plus ${displayWardrobeAvail} of ${displayWardrobeBonus} from Wardrobe` : ""}. ${rollHint}.`}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -751,7 +758,7 @@ export function ApproachDie({
           ...Array.from({ length: trackCurrent }, (_, index) => ({ key: `base-avail-${index}`, origin: "base" as const, spent: false })),
           ...Array.from({ length: wardrobeTrackCurrent }, (_, index) => ({ key: `wardrobe-avail-${index}`, origin: "wardrobe" as const, spent: false })),
           ...Array.from({ length: trackMax - trackCurrent }, (_, index) => ({ key: `base-spent-${index}`, origin: "base" as const, spent: true })),
-          ...Array.from({ length: wardrobeBonus - wardrobeTrackCurrent }, (_, index) => ({ key: `wardrobe-spent-${index}`, origin: "wardrobe" as const, spent: true })),
+          ...Array.from({ length: displayWardrobeBonus - wardrobeTrackCurrent }, (_, index) => ({ key: `wardrobe-spent-${index}`, origin: "wardrobe" as const, spent: true })),
         ].map((pip, index) => {
           const slot = index + 1
           const isWardrobe = pip.origin === "wardrobe"
@@ -793,14 +800,14 @@ export function ApproachDie({
         {/* Remaining slots up to the sheet's 1-6 ceiling that neither the
             Method's own rating nor Wardrobe have reached yet — hollow,
             dashed potential the Method hasn't grown into. */}
-        {Array.from({ length: Math.max(0, STAT_AND_METHOD_MAX - trackMax - wardrobeBonus) }, (_, index) => (
+        {Array.from({ length: Math.max(0, STAT_AND_METHOD_MAX - trackMax - displayWardrobeBonus) }, (_, index) => (
           <span
             key={`locked-${index}`}
             className="method-die-pip locked"
-            style={{ gridColumn: trackMax + wardrobeBonus + index + 1 }}
+            style={{ gridColumn: trackMax + displayWardrobeBonus + index + 1 }}
             aria-hidden="true"
           >
-            {trackMax + wardrobeBonus + index + 1}
+            {trackMax + displayWardrobeBonus + index + 1}
           </span>
         ))}
       </div>

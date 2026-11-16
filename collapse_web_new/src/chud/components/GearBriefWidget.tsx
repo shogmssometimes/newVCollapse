@@ -2,6 +2,13 @@ import { useRef, useState } from "react";
 import type { GearSlotEntry } from "../../types/chud";
 import { STANDARD_LONG_PRESS_MS } from "../../utils/gestureConstants";
 
+// Mirrors Gear.tsx's parseNonNegativeInt — defensive parse for entries that
+// may hold a negative/fractional/non-numeric string.
+function parseNonNegativeInt(raw: string): number {
+  const n = Math.floor(Math.abs(parseFloat(raw)));
+  return Number.isFinite(n) ? n : 0;
+}
+
 // Swipeable inventory summary widget. Long-press consumes one unit of the
 // active entry and writes the decrement back to the gear slots storage.
 export function GearBriefWidget({
@@ -69,12 +76,16 @@ export function GearBriefWidget({
         if (raw) {
           const parsed = JSON.parse(raw);
           const arr: GearSlotEntry[] = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.entries) ? parsed.entries : []);
-          const slotsUsed: number = typeof parsed?.slotsUsed === 'number' ? parsed.slotsUsed : 0;
           const updated = arr.map((e, i) => {
             if (i !== entryOriginalIdx) return e;
             const q = parseFloat(e.qty);
             return { ...e, qty: String(isNaN(q) || q <= 0 ? 0 : q - 1) };
           });
+          // Recompute slotsUsed from the updated entries (same formula as
+          // Gear.tsx) instead of carrying the stale saved total forward —
+          // otherwise Over-Encumbered stayed on until the Gear page was
+          // reopened and recalculated it.
+          const slotsUsed = updated.reduce((total, e) => total + parseNonNegativeInt(e.units) * parseNonNegativeInt(e.qty), 0);
           window.localStorage.setItem(gearSlotsKey, JSON.stringify({ entries: updated, slotsUsed }));
           // trigger storage event for Gear page
           window.dispatchEvent(new StorageEvent('storage', { key: gearSlotsKey, newValue: JSON.stringify({ entries: updated, slotsUsed }), storageArea: window.localStorage }));

@@ -38,7 +38,7 @@ const rawGear: RawGear[] = [
   { units: 0, name: "RopeCord", category: 'Utility', description: "Rope or paracord", effect: "Narrative item, no mechanical effect." },
   { units: 1, name: "Cutters", category: 'Utility', effect: "Remove Bound from yourself or a target in your zone." },
   { units: 1, name: "Second Wind", category: 'Utility', description: "Another shot at shaking an effect", effect: "Make one extra save against a Set on you.", notes: "Normally an extra save costs your non movement action." },
-  { units: 3, name: "Rest Kit", category: 'Utility', effect: "On a short rest, you and your party each choose two options instead of one. You can't pick the same option twice. [Expensive]" },
+  { units: 3, name: "Rest Kit", category: 'Utility', effect: "Players in your party pick 1 of the following: 8 HP or 2 Engrams. [Expensive]" },
 
   // --- Field ---
   { units: 2, name: "Camouflage", category: 'Field', tiedTo: "Hidden Methods", effect: "Enter Hidden movement (auto-succeeds). +1d4 to your Hidden set." },
@@ -58,14 +58,12 @@ const rawGear: RawGear[] = [
   { units: 2, name: "Revive Kit", category: 'Support', effect: "Revive a downed target at 1 HP. They roll Collapse as normal." },
   { units: 4, name: "Lifeline", category: 'Support', description: "Top-tier revive", effect: "Revive a downed target in your zone at 1 HP and skip their Collapse roll. [Expensive]" },
   { units: 1, name: "Pocket Ace", category: 'Support', effect: "Restore 1 Engram." },
-  { units: 1, name: "Whetstone", category: 'Support', description: "Hones a blade or blunt enhancer", effect: "Restore Sync.", notes: "Resync normally costs an action." },
-  { units: 1, name: "Reload", category: 'Support', description: "Reloads a ranged enhancer", effect: "Restore Sync.", notes: "Resync normally costs an action." },
   { units: 2, name: "Grit Draught", category: 'Support', effect: "Add +1 Grit." },
   { units: 3, name: "Antidote", category: 'Support', effect: "Remove a status effect from any target." },
 
   // --- Tonic ---
   { units: 1, name: "Boost", category: 'Tonic', effect: "Before an AO roll, add 1d6 to it." },
-  { units: 2, name: "Smelling Salts", category: 'Tonic', effect: "Free Overload: after you roll a Method, double any number of dice. None are discarded." },
+  { units: 2, name: "Smelling Salts", category: 'Tonic', effect: "Free Overload: after you roll a Method, double 1 die. It isn't discarded." },
   { units: 1, name: "Jump Start", category: 'Tonic', effect: "Add 1d4 to your Readiness roll." },
   { units: 1, name: "Force Tonic", category: 'Tonic', tiedTo: "Force", effect: "Force Method +1 die on your next roll with it. The pool can pass 6 temporarily." },
   { units: 1, name: "Finesse Tonic", category: 'Tonic', tiedTo: "Finesse", effect: "Finesse Method +1 die on your next roll with it. The pool can pass 6 temporarily." },

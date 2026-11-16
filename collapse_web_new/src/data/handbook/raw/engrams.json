@@ -25,7 +25,7 @@
   { "id": "engram-expose", "name": "Expose", "level": 1, "note": "", "effect": "Target receives the Exposed Status Effect; WT reduced by 1" },
   { "id": "engram-overheat", "name": "Overheat", "level": 1, "note": "Roll xd4; Set", "effect": "Target receives the Overheated Status Effect; Cannot use Grit" },
   { "id": "engram-vampire", "name": "Vampire", "level": 2, "note": "Roll xd4", "effect": "Targets Wounds, Heal You" },
-  { "id": "engram-shield", "name": "Shield", "level": 2, "note": "Roll xd4; Set", "effect": "Target receives the Shielded Status Effect; Target absorbs that many Wounds before reducing HP" },
+  { "id": "engram-shield", "name": "Shield", "level": 2, "note": "Roll xd4; Set", "effect": "Target receives the Shielded Status Effect; Attacks against you hit the Set first. Subtract the attacker's Total from the Set. If the Set holds, the attack does nothing except reduce the Set. If the Total is higher, the Shield breaks, and the leftover becomes the attack's Total against your defense roll." },
   { "id": "engram-fortify", "name": "Fortify", "level": 1, "note": "Roll xd4; Set", "effect": "Receive the Fortified Status Effect; WT increased by 1" },
   { "id": "engram-haste", "name": "Haste", "level": 1, "note": "Roll xd4; Set", "effect": "Receive the Hastened Status Effect; Gain an extra Movement Action each round this remains active" },
   { "id": "engram-rend-and-tear", "name": "Rend & Tear", "level": 1, "note": "Roll xd4; Set", "effect": "Receive the Bleeding Status Effect; Lose 1 HP at the bottom of your turn" },
@@ -34,7 +34,6 @@
   { "id": "engram-rattle", "name": "Rattle", "level": 1, "note": "Roll xd4; Set", "effect": "Receive the Rattled Status Effect; Cannot use Overload" },
   { "id": "engram-irradiate", "name": "Irradiate", "level": 1, "note": "Roll xd4; Set", "effect": "Target receives the Irradiated Status Effect; Lose 1 Grit" },
   { "id": "engram-energize", "name": "Energize", "level": 3, "note": "Roll xd4; Set", "effect": "Receive the Energized Status Effect; Gain +1 Non-Movement Action" },
-  { "id": "engram-desync", "name": "Desync", "level": 3, "note": "Roll xd4; Set", "effect": "Receive the Desynced Status Effect; Enhancer is Desynced" },
   { "id": "engram-terrify", "name": "Terrify", "level": 2, "note": "Roll xd4; Set", "effect": "Target receives the Frightened Status Effect; Must remain Zone-adjacent to fear source" },
   { "id": "engram-teleport", "name": "Teleport", "level": 2, "note": "", "effect": "Swap Positions with Target Ally" }
 ]

@@ -669,7 +669,7 @@ export default function GearPage({
     })
   }
 
-  const inventorySlots = chudSlots ?? 6
+  const inventorySlots = chudSlots ?? 0
 
   // Sum across ALL slots (not just the Vigor-derived visible count) so
   // anything stashed beyond capacity still counts toward the total and can

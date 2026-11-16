@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest"
 import { engramCatalog } from "./engramCatalog"
 
 describe("Engram catalog (handbook Phase 8_Engrams)", () => {
-  it("has the current 38-Engram list (Blood Rage and Hack removed)", () => {
-    expect(engramCatalog.length).toBe(38)
+  it("has the current 37-Engram list (Blood Rage, Hack, and Desync removed)", () => {
+    expect(engramCatalog.length).toBe(37)
   })
 
   it("has unique ids", () => {
@@ -23,7 +23,6 @@ describe("Engram catalog (handbook Phase 8_Engrams)", () => {
     expect(byName["Wing-It"].level).toBe(1)
     expect(byName["Guardian Angel"].level).toBe(2)
     expect(byName["Usurp"].level).toBe(3)
-    expect(byName["Desync"].level).toBe(3)
     expect(byName["Reviver"].level).toBe(1)
   })
 })

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DEFAULT_CORE, computeDerived } from "../domain/chudStats";
+import { computeDerived } from "../domain/chudStats";
 import { loadState } from "../utils/chudPersistence";
 import { engramCatalog } from "../data/handbook/engramCatalog";
 import {
@@ -17,6 +17,11 @@ import { EngramBriefWidget } from "../chud/components/EngramBriefWidget";
 // happens from the queue widget (swipe to cycle, tap to top up a charge,
 // long-press to spend one), mirrored here at the top of the page as a live
 // preview of that same queue.
+// Matches Chud.tsx's real pre-save default (an unset character has no Core
+// points yet) — falling back to DEFAULT_CORE's 3/2/2 here disagreed with
+// what a brand-new HUD actually starts at.
+const ZERO_CORE = { vigor: 0, inference: 0, personality: 0 };
+
 export default function EngramManager({
   storageKey,
   chudStateStorageKey,
@@ -25,7 +30,7 @@ export default function EngramManager({
   chudStateStorageKey: string;
 }) {
   const [state, setState] = useState<EngramManagerState>(() => readEngramState(storageKey));
-  const [core, setCore] = useState(() => loadState(chudStateStorageKey)?.core ?? DEFAULT_CORE);
+  const [core, setCore] = useState(() => loadState(chudStateStorageKey)?.core ?? ZERO_CORE);
 
   useEffect(() => {
     const handler = (e: StorageEvent) => {

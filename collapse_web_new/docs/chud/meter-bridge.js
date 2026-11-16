@@ -21,11 +21,14 @@ const STATUS_ROLL_MAX = 50
 const STATUS_ROLL_MAX_ROWS = 10
 const STATUS_ROLL_DEFAULT_ROWS = 2
 // Handbook's Status Effects table (Phase "Environmental Effects In
-// Action"), 27 entries, transcribed verbatim — see /tmp/v10.txt around
-// line 2195 for the source table. This replaces an older, pre-handbook
-// list that used retired terminology (AP, Mod Engrams, Overdrive) and
-// included statuses that don't exist in the handbook (Inspired,
-// Overclocked, Exhausted, Pressured).
+// Action"), 27 entries — see /tmp/v10.txt around line 2195 for the source
+// table. This replaces an older, pre-handbook list that used retired
+// terminology (AP, Mod Engrams, Overdrive) and included statuses that
+// don't exist in the handbook (Inspired, Overclocked, Exhausted,
+// Pressured). Hacked/Desynced were later removed (never-implemented
+// mechanics) and Hidden/Reckless added; Shielded's effect text was
+// rewritten to the Set-based rules fix (replaces the old flat xd4
+// absorb).
 const STATUS_EFFECTS_CATALOG = [
   { name: 'Slowed', effect: 'Any movement costs an Action instead' },
   { name: 'Bound', effect: 'Cannot take movement actions' },
@@ -41,10 +44,9 @@ const STATUS_EFFECTS_CATALOG = [
   { name: 'Frightened', effect: 'Must remain in an adjacent zone to fear source' },
   { name: 'Crushed', effect: "Roll 1d6, on 1-2, lose your Movement Action, 3-4 lose your Non Movement Action, 5-6 can't use Gear" },
   { name: 'Confused', effect: 'Roll twice, take lower' },
-  { name: 'Hacked', effect: 'Roll xd4, control target for that # of Turns' },
   { name: 'Discombobulated', effect: 'Roll 1d4, on 1, Combat Actions hit a random target' },
   { name: 'Focused', effect: 'On rolls, roll twice, take higher' },
-  { name: 'Shielded', effect: 'Target absorbs xd4 Wounds before reducing HP' },
+  { name: 'Shielded', effect: "Attacks against you hit the Set first. Subtract the attacker's Total from the Set. If the Set holds, the attack does nothing except reduce the Set. If the Total is higher, the Shield breaks, and the leftover becomes the attack's Total against your defense roll." },
   { name: 'Fortified', effect: 'WT increased by 1' },
   { name: 'Hastened', effect: 'Gain an extra Movement Action each round this remains active' },
   { name: 'Energized', effect: 'Gain +1 Non Movement Action' },
@@ -53,7 +55,8 @@ const STATUS_EFFECTS_CATALOG = [
   { name: 'Demoralized', effect: 'Cannot Ganbare or receive Ganbare' },
   { name: 'Rattled', effect: 'Cannot use Overload' },
   { name: 'Downed', effect: 'Out of the fight, must be revived' },
-  { name: 'Desynced', effect: 'Your Enhancer is Desynced' },
+  { name: 'Hidden', effect: '+1d6 to Finesse, Logic and Show rolls. Found by a Perception check that meets or beats your Set; if found, lose Hidden and become Exposed.' },
+  { name: 'Reckless', effect: '+1d6 to Force, Guts and Tell rolls. Stopped by a Method roll (Roleplay Action) that meets or beats your Set; if stopped, lose Reckless and become Exposed.' },
 ]
 function readUI() {
   try { const r = localStorage.getItem(UI_KEY); return r ? JSON.parse(r) : {} } catch { return {} }
@@ -961,7 +964,7 @@ function buildStatusRollsPanel() {
         }
         armedHint.textContent = rollCount <= 0
           ? (rating > 0 || wardrobeBonus > 0 ? 'Exhausted' : 'No dice')
-          : `Rolling ${rollCount} die${rollCount === 1 ? '' : 'ce'}${rolledWardrobeCount > 0 ? ` (${rolledBaseCount} base + ${rolledWardrobeCount} Wardrobe)` : ''}`
+          : `Rolling ${rollCount} ${rollCount === 1 ? 'die' : 'dice'}${rolledWardrobeCount > 0 ? ` (${rolledBaseCount} base + ${rolledWardrobeCount} Wardrobe)` : ''}`
         rollBtn.disabled = rollCount <= 0
       }
 

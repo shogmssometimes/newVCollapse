@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CoreStats } from "../../types/chud";
-import { DEFAULT_CORE, computeDerived } from "../../domain/chudStats";
+import { computeDerived } from "../../domain/chudStats";
+
+// Matches Chud.tsx's real pre-save default (an unset character has no Core
+// points yet) — falling back to DEFAULT_CORE's 3/2/2 here disagreed with
+// what a brand-new HUD actually starts at.
+const ZERO_CORE: CoreStats = { vigor: 0, inference: 0, personality: 0 };
 import {
   getNotificationsStorageKey,
   hasPendingNotification,
@@ -94,7 +99,7 @@ export function RestWidget({
     const maxGrit = maxGritForCollapse(collapse);
     const targetGrit = Math.min(maxGrit, roll + restBonus);
     const gritDelta = targetGrit - currentGrit;
-    const activeCore = core ?? readCore(storageKey) ?? DEFAULT_CORE;
+    const activeCore = core ?? readCore(storageKey) ?? ZERO_CORE;
     const hpMax = computeDerived(activeCore).hp;
     const hpDelta = hpMax - readHpCounter(storageKey);
     const bonusText = restBonus ? ` + ${restBonus} Rest Bonus` : "";

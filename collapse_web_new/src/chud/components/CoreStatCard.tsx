@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { lockScroll, unlockScroll } from "../../utils/scrollLock";
 
 const COMMIT_FLASH_MS = 320;
 // How far (px) the pointer must move vertically before a touch counts as a
@@ -59,6 +60,7 @@ export function CoreStatCard({
   useEffect(
     () => () => {
       if (commitFlashTimer.current !== null) window.clearTimeout(commitFlashTimer.current);
+      if (dragging.current) unlockScroll();
     },
     []
   );
@@ -68,6 +70,10 @@ export function CoreStatCard({
     startX.current = event.clientX;
     startY.current = event.clientY;
     setDragState(null);
+    // Lock page scroll while this swipe is tracked — the same underlying
+    // scroll vs. pointermove fight fixed for the HUD's hold-then-swipe
+    // gestures elsewhere.
+    lockScroll();
   };
 
   const handlePointerMove = (event: React.PointerEvent) => {
@@ -85,6 +91,7 @@ export function CoreStatCard({
   };
 
   const endDrag = () => {
+    if (dragging.current) unlockScroll();
     dragging.current = false;
     setDragState(null);
     setRiseProgress(0);

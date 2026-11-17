@@ -103,7 +103,6 @@ export default function EngramManager({
         {engramCatalog.map((def) => {
           const equipped = state.equipped[def.id];
           const copies = equipped?.copies ?? 0;
-          const charges = equipped?.charges ?? 0;
           const canAddCopy = def.level <= capacityRemaining;
           return (
             <div key={def.id} className="engram-row">
@@ -125,11 +124,6 @@ export default function EngramManager({
                     +
                   </button>
                 </div>
-                {copies > 0 && (
-                  <div className="engram-charges-readout">
-                    {charges} / {copies} charges
-                  </div>
-                )}
               </div>
             </div>
           );

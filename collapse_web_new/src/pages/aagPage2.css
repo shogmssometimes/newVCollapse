@@ -226,6 +226,13 @@
   color: rgba(248, 250, 252, 0.55);
 }
 
+/* "QUALITY" hint under the die value — bumped to a legible 11px minimum
+   (the shared instructions line above stays compact since it's a long
+   sentence that would wrap onto the narrow Page 2 column otherwise). */
+.aag-page2 .approach-die-size-hint {
+  font-size: 0.7rem;
+}
+
 .aag-page2 .approach-die-size-feedback {
   position: absolute;
   inset: 0;
@@ -323,7 +330,7 @@
 }
 
 .aag-page2 .row-compact-3 .chip span {
-  font-size: 0.525rem;
+  font-size: 0.7rem;
 }
 
 .aag-page2 .row-compact-3 .chip strong {
@@ -344,7 +351,7 @@
 }
 
 .aag-page2 .row-vitals-2 .chip span {
-  font-size: 0.5rem;
+  font-size: 0.7rem;
 }
 
 .aag-page2 .row-vitals-2 .chip strong {
@@ -630,37 +637,6 @@
 .aag-page2 .rest-stack-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.aag-page2 .full-rest-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.aag-page2 .rest-bonus-stepper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-size: 11px;
-  color: rgba(248, 250, 252, 0.7);
-}
-
-.aag-page2 .rest-bonus-stepper button {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.05);
-  color: inherit;
-  cursor: pointer;
-}
-
-.aag-page2 .rest-bonus-value {
-  min-width: 1.2em;
-  text-align: center;
-  font-weight: 700;
 }
 
 /* Readiness long-press roll popup — mirrors the cHUD's Method-roll popup

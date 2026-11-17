@@ -6,13 +6,15 @@ import type { EngramManagerState } from "../../utils/engramState";
 export function EngramPanel({
   engramState,
   engramStorageKey,
+  onStageForRoller,
 }: {
   engramState: EngramManagerState;
   engramStorageKey: string;
+  onStageForRoller: (id: string, name: string, charges: number) => void;
 }) {
   return (
     <div className="mods">
-      <EngramBriefWidget state={engramState} storageKey={engramStorageKey} />
+      <EngramBriefWidget state={engramState} storageKey={engramStorageKey} onStageForRoller={onStageForRoller} />
     </div>
   );
 }

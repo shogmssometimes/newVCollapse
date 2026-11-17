@@ -6,6 +6,8 @@ import { rollFlatDice, computeFumbleWounds } from "../../domain/approachDice"
 import { addSetRollRow } from "../../utils/chudVanillaBridge"
 import { pushNotification } from "../../domain/notifications"
 import { STAT_AND_METHOD_MAX } from "../../domain/coreApproachMap"
+import { STANDARD_LONG_PRESS_MS } from "../../utils/gestureConstants"
+import { lockScroll, unlockScroll } from "../../utils/scrollLock"
 
 export type ApproachDieRollResult = ApproachRollResult
 
@@ -66,17 +68,19 @@ const dieLabel = (die: DieSides) => `D${die}`
 // Past the roll, the popup offers Overload: long-press a die to double it
 // (spending 1 from whichever pool that die came from — base or Wardrobe).
 // A quick tap on an already-doubled die undoes it while it's still only
-// *pending* — picking a die back up and swiping left now explicitly
-// Confirms it instead (locks the double in for good, same moment it
-// spends from its pool); Send to Set and a confirmed Margin also confirm
-// implicitly. Closing the popup (X or tapping outside) with a double
-// still only pending, never confirmed, Cancels it instead — nothing is
-// spent. Engrams tapped onto the roll (see engramOptions) are different:
-// they commit the instant they're tapped, with no pending/undo window at
-// all — there's no way to "unroll" that decision short of the charges
-// never having been spent in the first place. From there, two paths
-// continue: send the Total to the HUD's Set Roll list, or turn it into a
-// Margin against an Opposition roll. A positive Margin can then be spent
+// *pending* — holding the Total line now explicitly Confirms it instead
+// (locks the double in for good, same moment it spends from its pool);
+// Send to Set and a confirmed Margin also confirm implicitly. Closing the
+// popup (X or tapping outside) no longer discards anything — see
+// `popupVisible`/"no free rerolls" below — only an explicit Confirm,
+// Send to Set, or Margin locks a pending double in; it can still be
+// un-done (tap the die) right up until one of those happens. The Engram
+// Stack (see `stagedEngram`/`engramStack`) is different: activating a
+// staged Engram commits the instant it's tapped, with no pending/undo
+// window at all — there's no way to "unroll" that decision short of the
+// charges never having been spent in the first place. From there, two
+// paths continue: send the Total to the HUD's Set Roll list, or turn it
+// into a Margin against an Opposition roll. A positive Margin can then be spent
 // on a flat (non-exploding) Wound roll — individual dice are checked against a Wound
 // Threshold/Target so the player can read off how many "successes" they
 // have to announce at the table. None of this adjudicates anything; it
@@ -92,8 +96,9 @@ export function ApproachDie({
   fumbleNumber = 0,
   onRoll,
   onOverload,
-  engramOptions = [],
-  onSpendEngram,
+  stagedEngram = null,
+  onConsumeStagedEngram,
+  onRefundEngram,
 }: {
   label: string
   /** Core-distributed rating alone (before Wardrobe) — the track's full/ghost count and the base Overload-spendable pool size. */
@@ -113,14 +118,30 @@ export function ApproachDie({
   onRoll: (count: number) => ApproachDieRollResult
   /** Spends `baseCount` dice from the base pool and `wardrobeCount` from the Wardrobe pool at once (one per doubled die, resolved together). Returns false if either pool couldn't cover its full count. */
   onOverload?: (baseCount: number, wardrobeCount: number) => boolean
-  /** Qualifying equipped Engrams with charges > 0 — shown as tappable standby icons in the roll popup (same list shared by every Method). */
-  engramOptions?: Array<{ id: string; name: string; charges: number }>
-  /** Tapping an Engram icon spends ALL of its current charges at once, immediately and for good (no undo); returns how many were spent so this many d4s can be rolled and added to the Total. */
-  onSpendEngram?: (engramId: string) => number
+  /** The one Engram currently charged-and-staged from the HUD's Engram Q
+   * (global — shared across every Method's popup), waiting to be
+   * activated into THIS roll. Null if nothing is staged right now. */
+  stagedEngram?: { id: string; name: string; charges: number } | null
+  /** Called once the staged Engram above has been activated (rolled into
+   * this roll's Stack) — clears the global staged slot so it can't also
+   * be activated by a different Method's popup. */
+  onConsumeStagedEngram?: () => void
+  /** Refunds `amount` charges back to an Engram — used when swapping this
+   * roll's already-activated Stack out for a newly-staged Engram, before
+   * the Stack is locked in by Confirm/Margin. */
+  onRefundEngram?: (engramId: string, amount: number) => void
 }) {
   const wardrobeAvail = wardrobeAvailable ?? wardrobeBonus
   const [errorFlash, setErrorFlash] = useState(false)
   const [result, setResult] = useState<ApproachDieRollResult | null>(null)
+  // Whether the popup is actually shown right now — distinct from having a
+  // `result`. Closing (X/outside tap) only hides the popup; it never
+  // throws the roll away. Reopening the same Method (without a fresh roll)
+  // shows the exact same dice/Stack/pending-Overload until the roll is
+  // Confirmed or sent to Margin — see closePopup/rollPool and the
+  // Method-row press handler in ApproachPanel.tsx that reopens instead of
+  // re-rolling when an unresolved result is already sitting here.
+  const [popupVisible, setPopupVisible] = useState(false)
   const [pendingOverload, setPendingOverload] = useState<Set<number>>(new Set())
   const [resolved, setResolved] = useState(false)
   const [rolling, setRolling] = useState(false)
@@ -146,13 +167,20 @@ export function ApproachDie({
   const [damageDice, setDamageDice] = useState<number[]>([])
   const [woundValue, setWoundValue] = useState("")
   const [woundMode, setWoundMode] = useState<"threshold" | "target">("threshold")
-  // Engram bonus dice standby'd onto this roll — tapping an Engram icon
-  // spends ALL of its current charges at once and rolls that many d4s,
-  // grouped here and summed into the Total alongside the Method dice.
-  // Charges are spent immediately and permanently — unlike Overload below,
-  // there's no pending/undo window at all for an Engram once it's tapped;
-  // closing the popup can never claw it back.
-  const [engramBonus, setEngramBonus] = useState<Array<{ id: string; name: string; rolls: number[] }>>([])
+  // The one Engram Stack activated onto this roll (handbook p25: the
+  // roller holds only one Engram type at a time). It's created by
+  // activating `stagedEngram` (tapping the standby chip below) — that
+  // rolls its dice once and they never reroll even if the player swaps
+  // away and back. Swapping to a *different* newly-staged Engram before
+  // this roll is Confirmed/sent to Margin refunds this Stack's charges and
+  // replaces it; once Confirmed/Margin'd (resolvedRef), the Stack is
+  // locked and can no longer be swapped or cleared.
+  const [engramStack, setEngramStack] = useState<{ id: string; name: string; rolls: number[] } | null>(null)
+  // Hold progress (0-100) for the Total line's long-press-to-Confirm
+  // gesture — replaces the old die-swipe-left Confirm, which was
+  // unreliable. Confirms everything at once: any pending Overload AND
+  // locks the current Engram Stack in for good.
+  const [confirmHoldProgress, setConfirmHoldProgress] = useState(0)
   // Swipe-commit "fling" — the picked-up die flies off in the swipe
   // direction instead of the action applying (and the chip
   // disappearing/resetting) instantly, so the gesture reads as a deliberate
@@ -177,6 +205,11 @@ export function ApproachDie({
   const [dieSwipeDir, setDieSwipeDir] = useState<"up" | "down" | "left" | "right" | null>(null)
   const boxRef = useRef<HTMLDivElement>(null)
   const popupRef = useRef<HTMLDivElement>(null)
+  // Guards each gesture's own lockScroll()/unlockScroll() pairing so a
+  // stray extra cancel (e.g. both onPointerLeave and onPointerCancel
+  // firing for one release) can't unlock the page twice for one lock.
+  const scrollLockedRef = useRef(false)
+  const dieScrollLockedRef = useRef(false)
 
   // Spends the pending Overloads from their own pools — dice at indices
   // [0, available) came from the base pool, [available, available +
@@ -184,10 +217,11 @@ export function ApproachDie({
   // below) — one die each, resolved together in a single call so the
   // parent's state update can't miss any (see the module doc comment on
   // why resolving dice one-at-a-time in a loop used to under-spend). This
-  // is the "Confirm" action (die-pickup swipe left, Send to Set, or a
-  // confirmed Margin) — closing the popup WITHOUT calling this first
-  // (see closePopup) is instead a Cancel: the pending double is just
-  // dropped, nothing spent. Idempotent via resolvedRef: once resolved,
+  // is the "Confirm" action (long-press the Total line, Send to Set, or a
+  // confirmed Margin) — closing the popup before this happens (see
+  // closePopup) no longer cancels anything; it just hides the popup and
+  // the pending Overload/Engram Stack remain exactly as they are until
+  // Confirmed. Idempotent via resolvedRef: once resolved,
   // repeat calls are no-ops rather than double-spending.
   const resolveOverloadIfNeeded = useCallback(() => {
     if (resolvedRef.current) return
@@ -205,38 +239,14 @@ export function ApproachDie({
   }, [onOverload, pendingOverload, available])
 
   const closePopup = useCallback(() => {
-    // Closing the popup (via the X button or tapping outside) now
-    // Cancels any Overload that's still only pending — nothing is spent.
-    // Confirming a double (so closing can't take it back) happens
-    // explicitly: picking the die back up and swiping left, or committing
-    // the roll via Send to Set / a confirmed Margin (see
-    // handleDiePointerUp/sendToSet/handleConfirmMargin) all resolve it for
-    // real first. Engrams are unaffected either way — they were already
-    // spent for good the instant they were tapped.
-    resolvedRef.current = true
-    setResult(null)
-    setRolling(false)
-    setPendingOverload(new Set())
-    setResolved(false)
-    setView("result")
-    setOppositionInput("")
-    setIsSaveRoll(false)
-    setMargin(null)
-    setMarginBase(null)
-    setDamageDice([])
-    setWoundValue("")
-    setWoundMode("threshold")
-    setArmedDieIndex(null)
-    setDieFling(null)
-    setEngramBonus([])
-    if (flingTimer.current !== null) {
-      window.clearTimeout(flingTimer.current)
-      flingTimer.current = null
-    }
-    if (rollAnimTimer.current !== null) {
-      window.clearInterval(rollAnimTimer.current)
-      rollAnimTimer.current = null
-    }
+    // Closing the popup (via the X button or tapping outside) now ONLY
+    // hides it — "no free rerolls": the roll, any pending Overload, and
+    // the Engram Stack all stay exactly as they are. Reopening this same
+    // Method (see the roll-trigger gating in ApproachPanel.tsx) shows the
+    // identical dice/pending state rather than throwing it away, right up
+    // until the roll is actually Confirmed (long-press the Total) or sent
+    // to Margin — only THEN does the next roll-trigger start a fresh roll.
+    setPopupVisible(false)
   }, [])
 
   // The result popup stays open until the player dismisses it (tap outside
@@ -248,7 +258,7 @@ export function ApproachDie({
   // let a tap on a die/button inside the popup be misread as "outside"
   // and close it before the player's intended action landed.
   useEffect(() => {
-    if (!result) return
+    if (!popupVisible) return
     const handleOutside = (event: PointerEvent) => {
       if (!(event.target instanceof Node)) return
       if (boxRef.current?.contains(event.target)) return
@@ -257,7 +267,7 @@ export function ApproachDie({
     }
     document.addEventListener("pointerdown", handleOutside)
     return () => document.removeEventListener("pointerdown", handleOutside)
-  }, [result, closePopup])
+  }, [popupVisible, closePopup])
 
   const vibrate = (ms: number) => {
     if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(ms)
@@ -270,6 +280,10 @@ export function ApproachDie({
     if (armTimer.current !== null) window.clearTimeout(armTimer.current)
     if (chargeInterval.current !== null) window.clearInterval(chargeInterval.current)
     if (flingTimer.current !== null) window.clearTimeout(flingTimer.current)
+    if (confirmHoldTimer.current !== null) window.clearTimeout(confirmHoldTimer.current)
+    if (confirmHoldInterval.current !== null) window.clearInterval(confirmHoldInterval.current)
+    if (scrollLockedRef.current) { scrollLockedRef.current = false; unlockScroll() }
+    if (dieScrollLockedRef.current) { dieScrollLockedRef.current = false; unlockScroll() }
   }, [])
 
   const flashError = () => {
@@ -297,8 +311,10 @@ export function ApproachDie({
     const rolled = onRoll(count)
     resolvedRef.current = false
     setResult(null)
+    setPopupVisible(true)
     setPendingOverload(new Set())
-    setEngramBonus([])
+    setEngramStack(null)
+    setConfirmHoldProgress(0)
     setResolved(false)
     setView("result")
     setRolling(true)
@@ -337,6 +353,10 @@ export function ApproachDie({
     pendingRollRef.current = false
     setPendingRoll(false)
     gestureStart.current = null
+    if (scrollLockedRef.current) {
+      scrollLockedRef.current = false
+      unlockScroll()
+    }
   }
 
   // Holding the name box arms the gesture (same gold "charging" glow the
@@ -353,6 +373,11 @@ export function ApproachDie({
     if (poolMax <= 0) return
     rolledThisGesture.current = false
     gestureStart.current = { x: event.clientX, y: event.clientY }
+    // Lock page scroll for the duration of this hold-then-swipe — an
+    // underlying scroll fighting the same finger movement used to make
+    // the swipe threshold unreliable to hit.
+    scrollLockedRef.current = true
+    lockScroll()
     try {
       event.currentTarget.setPointerCapture(event.pointerId)
     } catch {
@@ -399,7 +424,14 @@ export function ApproachDie({
     if (shouldRoll) {
       rolledThisGesture.current = true
       vibrate(VIBRATE_PIP_MS * 2)
-      rollPool(poolMax)
+      // No free rerolls: an unresolved result (not yet Confirmed or sent
+      // to Margin) just reopens — the exact same dice, pending Overload,
+      // and Engram Stack, rather than throwing them away for a fresh roll.
+      if (result && !resolvedRef.current) {
+        setPopupVisible(true)
+      } else {
+        rollPool(poolMax)
+      }
     }
   }
 
@@ -411,7 +443,7 @@ export function ApproachDie({
 
   // Overload doubles a die's face value. Nothing Explodes, so the Method's
   // own Total is simply the single highest die in the pool after any
-  // Overloads — Engram bonus d4s (see engramBonus state) are a flat
+  // Overloads — Engram Stack d4s (see engramStack state) are a flat
   // separate addition on top of that (handbook "Roll+xd4" notation: added
   // to an existing roll, not part of the take-the-highest pool), so they're
   // summed in afterward rather than folded into this max().
@@ -427,10 +459,7 @@ export function ApproachDie({
   // breakdown below, same idea as the Engram breakdown.
   const overloadedIndex = pendingOverload.size > 0 ? Array.from(pendingOverload)[0] : null
   const overloadedBaseValue = overloadedIndex !== null && result ? result.dice[overloadedIndex].total : null
-  const engramBonusTotal = engramBonus.reduce(
-    (sum, entry) => sum + entry.rolls.reduce((a, b) => a + b, 0),
-    0
-  )
+  const engramBonusTotal = engramStack ? engramStack.rolls.reduce((a, b) => a + b, 0) : 0
   const displayTotal = dieMax + engramBonusTotal
   // Picking up a die previews doubling it, but only once confirmed with a
   // long-press (a plain tap would be too easy to trigger by accident while
@@ -469,22 +498,24 @@ export function ApproachDie({
     })
   }
 
-  // Engram roller integration: tapping a standby icon spends ALL of that
-  // Engram's current charges in one gesture and rolls that many d4s,
-  // grouped as their own small chips and summed straight into the Total.
-  // This is final the instant it happens — there's no undo/refund path,
-  // tapping the resulting chip again does nothing (see its onClick below).
-  // No-op if the Engram has already been emptied elsewhere in the meantime
-  // (e.g. two Method popups open in quick succession) — onSpendEngram
-  // returns 0 in that case.
-  const addEngramBonus = (engramId: string) => {
-    if (!onSpendEngram) return
-    const option = engramOptions.find((entry) => entry.id === engramId)
-    if (!option) return
-    const amount = onSpendEngram(engramId)
-    if (amount <= 0) return
-    const rolls = rollFlatDice(amount, 4)
-    setEngramBonus((prev) => [...prev, { id: engramId, name: option.name, rolls }])
+  // Engram Stack: activating the staged chip (sourced from the HUD's
+  // Engram Q — see `stagedEngram`) rolls its dice ONCE and locks them into
+  // this roll's Stack. The roller holds only one Engram type at a time —
+  // activating a newly-staged Engram while a different one is already
+  // this roll's Stack swaps it: the old Stack's charges are refunded,
+  // then the new one rolls fresh. Once this roll is Confirmed/sent to
+  // Margin (resolvedRef), the Stack is locked — no more swapping. Dice
+  // never reroll: the same `engramStack.rolls` persist across close/reopen
+  // (see closePopup/rollPool) until the Stack itself is replaced.
+  const activateStagedEngram = () => {
+    if (!stagedEngram || resolvedRef.current) return
+    if (engramStack && engramStack.id === stagedEngram.id) return // already this Stack — nothing to do
+    if (engramStack && onRefundEngram) {
+      onRefundEngram(engramStack.id, engramStack.rolls.length)
+    }
+    const rolls = rollFlatDice(stagedEngram.charges, 4)
+    setEngramStack({ id: stagedEngram.id, name: stagedEngram.name, rolls })
+    onConsumeStagedEngram?.()
   }
 
   const cancelDiePress = () => {
@@ -497,6 +528,10 @@ export function ApproachDie({
     dieGestureStart.current = null
     dieSwipeDirRef.current = null
     setDieSwipeDir(null)
+    if (dieScrollLockedRef.current) {
+      dieScrollLockedRef.current = false
+      unlockScroll()
+    }
   }
 
   const sendToSet = (total: number) => {
@@ -512,23 +547,24 @@ export function ApproachDie({
 
   // Long-pressing a die "picks it up": once armed (same hold duration as
   // the old immediate-double long-press), any swipe past DIE_SWIPE_PX in
-  // one of the 4 cardinal directions fires that direction's action —
-  // up doubles *this* die, down sends the Total to the Set list, right
-  // starts the Margin flow, left Confirms (locks in any pending Overload
-  // for good — same as Send to Set/a confirmed Margin resolving it — but
-  // without otherwise leaving the result screen). Moving too far before
-  // arming cancels the whole press, same guard the Method row's own
-  // hold-then-swipe uses.
+  // one of the 3 remaining cardinal directions fires that direction's
+  // action — up doubles *this* die, down sends the Total to the Set list,
+  // right starts the Margin flow (left no longer does anything — Confirm
+  // moved to a long-press on the Total line, see confirmHoldProgress).
+  // Moving too far before arming cancels the whole press, same guard the
+  // Method row's own hold-then-swipe uses.
   const handleDiePointerDown = (index: number, event: React.PointerEvent<HTMLButtonElement>) => {
-    // Note: NOT gated on resolvedRef — Send to Set/Margin/Confirm must
-    // keep working after a Confirm resolves the pending Overload. Only
-    // the Overload-specific actions (addOverload/removeOverload below)
-    // stay guarded by resolvedRef, so a resolved die can no longer be
-    // doubled or un-doubled, but every other die gesture keeps working.
+    // Note: NOT gated on resolvedRef — Send to Set/Margin must keep
+    // working after the Total's long-press Confirms a pending Overload.
+    // Only the Overload-specific actions (addOverload/removeOverload
+    // below) stay guarded by resolvedRef, so a resolved die can no longer
+    // be doubled or un-doubled, but every other die gesture keeps working.
     dieSuppressClick.current = false
     dieSwipeDirRef.current = null
     setDieSwipeDir(null)
     dieGestureStart.current = { x: event.clientX, y: event.clientY }
+    dieScrollLockedRef.current = true
+    lockScroll()
     try {
       event.currentTarget.setPointerCapture(event.pointerId)
     } catch {
@@ -571,7 +607,10 @@ export function ApproachDie({
           : "down"
         : dx > 0
         ? "right"
-        : "left"
+        // Left no longer does anything — Confirm moved to a long-press on
+        // the Total line (see confirmHoldProgress below), since the
+        // left-swipe gesture here was unreliable.
+        : null
     if (dir !== dieSwipeDirRef.current) {
       dieSwipeDirRef.current = dir
       setDieSwipeDir(dir)
@@ -593,15 +632,9 @@ export function ApproachDie({
     } else if (dir === "down") {
       setDieFling({ index, dir: "down" }) // swipe down: Send to Set
       flingTimer.current = window.setTimeout(() => { sendToSet(displayTotal); setDieFling(null) }, FLING_DURATION_MS)
-    } else if (dir === "right") {
+    } else {
       setDieFling({ index, dir: "right" }) // swipe right: Create Margin
       flingTimer.current = window.setTimeout(() => { startMargin(displayTotal); setDieFling(null) }, FLING_DURATION_MS)
-    } else {
-      // swipe left: Confirm — locks in any pending Overload for good
-      // (burns its pool charge) without otherwise leaving the result
-      // screen; still flings it off so the gesture reads as deliberate.
-      setDieFling({ index, dir: "left" })
-      flingTimer.current = window.setTimeout(() => { resolveOverloadIfNeeded(); setDieFling(null) }, FLING_DURATION_MS)
     }
   }
 
@@ -614,6 +647,32 @@ export function ApproachDie({
     }
     removeOverload(index)
   }
+
+  // Confirm — long-press the Total line. Replaces the old die-pickup
+  // swipe-left Confirm, which players found unreliable. Locks in any
+  // pending Overload (resolveOverloadIfNeeded) AND the current Engram
+  // Stack (resolvedRef also gates activateStagedEngram/onRefundEngram) in
+  // one gesture, without leaving the result screen.
+  const confirmHoldTimer = useRef<number | null>(null)
+  const confirmHoldInterval = useRef<number | null>(null)
+  const cancelConfirmHold = () => {
+    if (confirmHoldTimer.current !== null) { window.clearTimeout(confirmHoldTimer.current); confirmHoldTimer.current = null }
+    if (confirmHoldInterval.current !== null) { window.clearInterval(confirmHoldInterval.current); confirmHoldInterval.current = null }
+    setConfirmHoldProgress(0)
+  }
+  const startConfirmHold = () => {
+    if (resolvedRef.current) return
+    const start = Date.now()
+    confirmHoldInterval.current = window.setInterval(() => {
+      setConfirmHoldProgress(Math.min(100, ((Date.now() - start) / STANDARD_LONG_PRESS_MS) * 100))
+    }, 30)
+    confirmHoldTimer.current = window.setTimeout(() => {
+      cancelConfirmHold()
+      vibrate(VIBRATE_PIP_MS * 2)
+      resolveOverloadIfNeeded()
+    }, STANDARD_LONG_PRESS_MS)
+  }
+
 
   const handleConfirmMargin = () => {
     resolveOverloadIfNeeded()
@@ -874,8 +933,8 @@ export function ApproachDie({
                       }}
                       title={
                         pendingOverload.has(index)
-                          ? "Tap to undo this Overload · pick it up and swipe left to Confirm it for good"
-                          : "Hold, then swipe: up Doubles, down sends to Set, right starts Margin, left Confirms"
+                          ? "Tap to undo this Overload · hold the Total below to Confirm it for good"
+                          : "Hold, then swipe: up Doubles, down sends to Set, right starts Margin"
                       }
                     >
                       <span
@@ -888,52 +947,65 @@ export function ApproachDie({
                   )
                 })}
               </div>
-              {(engramBonus.length > 0 || engramOptions.length > 0) && (
-                <div className="approach-die-engram-row" aria-label="Engram roller">
-                  {engramBonus.map((entry) => (
+              {(engramStack || (stagedEngram && !resolvedRef.current)) && (
+                <div className="approach-die-engram-row" aria-label="Engram Stack">
+                  {engramStack && (
                     <span
-                      key={entry.id}
                       className="approach-die-engram-chip spent"
-                      title={`${entry.name}: ${entry.rolls.join(" + ")} — spent, locked in for this roll`}
+                      title={`${engramStack.name}: ${engramStack.rolls.join(" + ")} — locked in for this roll`}
                     >
-                      <span className="approach-die-engram-chip-name">{entry.name}</span>
+                      <span className="approach-die-engram-chip-name">{engramStack.name}</span>
                       <span className="approach-die-engram-chip-dice">
-                        {entry.rolls.map((roll, index) => (
+                        {engramStack.rolls.map((roll, index) => (
                           <span key={index} className="approach-die-engram-die">{roll}</span>
                         ))}
                       </span>
                     </span>
-                  ))}
-                  {engramOptions
-                    .filter((option) => !engramBonus.some((entry) => entry.id === option.id))
-                    .map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        className="approach-die-engram-chip standby"
-                        onClick={(event) => { event.stopPropagation(); addEngramBonus(option.id) }}
-                        title={`Spend all ${option.charges} charge${option.charges === 1 ? "" : "s"} of ${option.name} (+${option.charges}d4 to the Total) — final, can't be undone`}
-                      >
-                        <span className="approach-die-engram-chip-name">{option.name}</span>
-                        <span className="approach-die-engram-chip-count">×{option.charges}</span>
-                      </button>
-                    ))}
+                  )}
+                  {stagedEngram && !resolvedRef.current && stagedEngram.id !== engramStack?.id && (
+                    <button
+                      type="button"
+                      className="approach-die-engram-chip standby"
+                      onClick={(event) => { event.stopPropagation(); activateStagedEngram() }}
+                      title={
+                        engramStack
+                          ? `Swap the Stack: refunds ${engramStack.name} and rolls ${stagedEngram.charges}d4 for ${stagedEngram.name} instead`
+                          : `Roll ${stagedEngram.charges}d4 for ${stagedEngram.name} and add it to this roll — final, can't be undone`
+                      }
+                    >
+                      <span className="approach-die-engram-chip-name">{stagedEngram.name}</span>
+                      <span className="approach-die-engram-chip-count">×{stagedEngram.charges}</span>
+                    </button>
+                  )}
                 </div>
               )}
-              {(engramBonus.length > 0 || overloadedIndex !== null) && (
-                <div className="approach-die-popup-total">
-                  Total: {displayTotal}{" "}
+              <div
+                className={`approach-die-popup-total${resolvedRef.current ? "" : " confirmable"}`}
+                onPointerDown={(event) => { event.stopPropagation(); startConfirmHold() }}
+                onPointerUp={(event) => { event.stopPropagation(); cancelConfirmHold() }}
+                onPointerLeave={cancelConfirmHold}
+                onPointerCancel={cancelConfirmHold}
+                onContextMenu={(event) => event.preventDefault()}
+                title={resolvedRef.current ? undefined : "Hold to Confirm — locks in any Overload and the Engram Stack for good"}
+              >
+                <span
+                  className={`rising-progress-fill timed${confirmHoldProgress > 0 ? " active" : ""}`}
+                  style={{ ["--hold-progress-ms" as string]: `${STANDARD_LONG_PRESS_MS}ms` } as CSSProperties}
+                  aria-hidden="true"
+                />
+                Total: {displayTotal}{" "}
+                {(engramBonusTotal > 0 || overloadedIndex !== null) && (
                   <span className="approach-die-popup-total-sub">
                     (
                     {overloadedIndex !== null && overloadedBaseValue !== null
                       ? `${overloadedBaseValue} doubled to ${overloadedBaseValue * 2}`
                       : `${dieMax} die`}
-                    {engramBonus.length > 0 ? ` + ${engramBonusTotal} Engram` : ""})
+                    {engramBonusTotal > 0 ? ` + ${engramBonusTotal} Engram` : ""})
                   </span>
-                </div>
-              )}
+                )}
+              </div>
               <div className="approach-die-popup-swipe-hint">
-                ↑ Double · ↓ Send to Set · → Margin · ← Confirm
+                ↑ Double · ↓ Send to Set · → Margin · Hold Total to Confirm
               </div>
             </>
           )}

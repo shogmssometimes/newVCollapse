@@ -1321,6 +1321,16 @@ body::after {
   color: rgba(248, 250, 252, 0.85);
 }
 
+/* The longest Method name ("FINESSE") clips against the row's fixed
+   64px-wide box at narrow phone widths (375px and below) — shrink the
+   font/letter-spacing just enough there to keep it fully visible. */
+@media (max-width: 400px) {
+  .method-row-name {
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+  }
+}
+
 /* The track: a fixed 1-6 numbered-circle row, like the printed sheet's
    Method marker track, with Wardrobe dice folded in as squares right
    after the Method's own circles (never a separate number elsewhere).
@@ -1719,11 +1729,25 @@ body::after {
 }
 
 .approach-die-popup-total {
+  position: relative;
   margin-top: 8px;
+  padding: 6px 10px;
   font-size: 0.95rem;
   font-weight: 700;
   color: #f8fafc;
   text-align: center;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.approach-die-popup-total.confirmable {
+  cursor: pointer;
+  touch-action: none;
+}
+
+.approach-die-popup-total > *:not(.rising-progress-fill) {
+  position: relative;
+  z-index: 1;
 }
 
 .approach-die-popup-total-sub {

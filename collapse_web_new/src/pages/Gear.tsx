@@ -211,7 +211,8 @@ const FIELD_STYLE: React.CSSProperties = {
   borderRadius: 4,
   padding: '5px 8px',
   color: 'inherit',
-  fontSize: '0.82rem',
+  // 16px minimum keeps iOS Safari from auto-zooming the page on focus.
+  fontSize: '16px',
   width: '100%',
   minWidth: 0,
   minHeight: 36,
@@ -240,7 +241,10 @@ function SlotRow({ index, entry, onChange, overCapacity }: {
       cancelHold()
       const current = parseFloat(entry.qty)
       if (!isNaN(current) && current > 0) {
-        onChange({ ...entry, qty: String(current - 1) })
+        const next = current - 1
+        // Using the last unit empties the whole row instead of leaving a
+        // visible qty-0 entry behind.
+        onChange(next > 0 ? { ...entry, qty: String(next) } : { ...EMPTY_ENTRY })
       }
     }, STANDARD_LONG_PRESS_MS)
   }
@@ -296,8 +300,8 @@ function SlotRow({ index, entry, onChange, overCapacity }: {
             justifyContent: 'center',
             width: '100%',
             height: '100%',
-            fontSize: '0.55rem',
-            letterSpacing: '0.04em',
+            fontSize: '0.7rem',
+            letterSpacing: '0.02em',
             fontFamily: 'var(--font-display)',
             color: canUse ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.2)',
             userSelect: 'none',
@@ -532,16 +536,20 @@ function GearCard({ item, onQuickAdd }: { item: GearItem; onQuickAdd?: (item: Ge
               title="Add 1 to Inventory"
               aria-label={`Add 1 ${item.name} to inventory`}
               style={{
-                width: 22,
-                height: 22,
-                borderRadius: 5,
+                // Bumped from 22px to a real phone tap target (>=32px,
+                // sizing-only — onClick/logic above is unchanged).
+                width: 36,
+                height: 36,
+                minWidth: 36,
+                minHeight: 36,
+                borderRadius: 7,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 background: 'rgba(99,255,177,0.1)',
                 border: '1px solid rgba(99,255,177,0.45)',
                 color: '#63ffb1',
-                fontSize: '0.9rem',
+                fontSize: '1.05rem',
                 fontWeight: 700,
                 lineHeight: 1,
                 padding: 0,
@@ -671,6 +679,22 @@ export default function GearPage({
 
   const inventorySlots = chudSlots ?? 0
 
+  // The row list should track the character's real (Vigor-derived)
+  // inventorySlots count rather than always rendering all
+  // MAX_INVENTORY_SLOTS — but if something is stashed beyond that count
+  // (e.g. Vigor dropped after slots were filled, or Quick Add overflowed),
+  // keep showing those occupied rows too so the over-capacity item stays
+  // visible instead of silently disappearing.
+  const highestOccupiedIndex = useMemo(() => {
+    let idx = -1
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i]
+      if (e && (e.name.trim() !== '' || parseNonNegativeInt(e.units) > 0 || parseNonNegativeInt(e.qty) > 0)) idx = i
+    }
+    return idx
+  }, [entries])
+  const visibleRowCount = Math.max(inventorySlots, highestOccupiedIndex + 1)
+
   // Sum across ALL slots (not just the Vigor-derived visible count) so
   // anything stashed beyond capacity still counts toward the total and can
   // actually trigger Over-Encumbered.
@@ -776,7 +800,7 @@ export default function GearPage({
         )}
       </div>
 
-      <InventoryEntries count={MAX_INVENTORY_SLOTS} capacity={inventorySlots} entries={entries} onEntryChange={handleEntryChange} />
+      <InventoryEntries count={visibleRowCount} capacity={inventorySlots} entries={entries} onEntryChange={handleEntryChange} />
 
       {/* ── Wardrobe ─────────────────────────────────────── */}
       <div style={{ marginTop: 32, marginBottom: 32 }}>
@@ -916,7 +940,8 @@ export default function GearPage({
                 borderRadius: 6,
                 padding: '8px 12px',
                 color: 'inherit',
-                fontSize: '0.9rem',
+                // 16px minimum keeps iOS Safari from auto-zooming on focus.
+                fontSize: '16px',
                 width: '100%',
               }}
             />

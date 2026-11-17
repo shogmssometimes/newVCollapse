@@ -1,27 +1,46 @@
 import { useRef, useState } from "react";
 import { engramCatalogById } from "../../data/handbook/engramCatalog";
-import { spendEngramCharges, type EngramManagerState } from "../../utils/engramState";
+import { addEngramCharge, spendAllEngramCharges, type EngramManagerState } from "../../utils/engramState";
 import { STANDARD_LONG_PRESS_MS } from "../../utils/gestureConstants";
+import { lockScroll, unlockScroll } from "../../utils/scrollLock";
 
 const SWIPE_THRESHOLD_PX = 30;
+// Movement past this, before a swipe/tap is decided, cancels an in-flight
+// long-press hold — otherwise a deliberate swipe-to-cycle gesture could
+// accidentally also fire the long-press activation partway through.
+const MOVE_CANCEL_PX = 10;
 
-// Swipeable Engram queue widget — mirrors GearBriefWidget's layout, but with
-// its own gesture set: swipe left/right to cycle through every *equipped*
-// Engram (not just ones with charges left); a tap spends 1 charge (charges
-// can only be refilled by Full Rest, never by tapping); a long-press opens
-// an info popup for the Engram on screen.
+type ActivatePopup =
+  | { kind: "staged"; name: string; charges: number }
+  | { kind: "effect"; name: string; text: string };
+
+// Swipeable Engram queue widget — mirrors GearBriefWidget's layout. Gestures:
+// swipe left/right cycles through every *equipped* Engram (copies > 0,
+// regardless of current charge); a tap charges/preps one more stack (+1,
+// wrapping back to 0 once at max copies — charges never refund for free,
+// only Full Rest or an explicit refund does that); a long-press spends
+// every currently-charged stack at once. For an Engram that rolls into a
+// Method (handbook catalog's rollsIntoMethod), this only STAGES it — the
+// charge count is handed to the globally-shared `onStageForRoller` slot,
+// and the actual dice are rolled later when a Method roll popup activates
+// that staged chip (see ApproachDie's engramStack). For an Engram that
+// doesn't roll into a Method (heals, etc. — never enters a roller), the
+// long-press resolves immediately and shows its effect text.
 export function EngramBriefWidget({
   state,
   storageKey,
+  onStageForRoller,
 }: {
   state: EngramManagerState;
   storageKey: string;
+  /** Stages a roll-type Engram's charge count as the shared standby chip in every Method roll popup. Omitted on the Engram Manager's equip-screen preview, where there's no roller to stage into. */
+  onStageForRoller?: (id: string, name: string, charges: number) => void;
 }) {
   const [idx, setIdx] = useState(0);
   const [holdProgress, setHoldProgress] = useState(0); // 0–100
   const [flashIn, setFlashIn] = useState(false);
-  const [popupEntry, setPopupEntry] = useState<{ id: string; name: string } | null>(null);
-  const touchStartX = useRef<number | null>(null);
+  const [popup, setPopup] = useState<ActivatePopup | null>(null);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const isHolding = useRef(false);
@@ -62,8 +81,21 @@ export function EngramBriefWidget({
     holdTimer.current = setTimeout(() => {
       holdFired.current = true;
       cancelHold();
-      setPopupEntry({ id: entry.id, name: entry.name });
+      activate();
     }, STANDARD_LONG_PRESS_MS);
+  };
+
+  const activate = () => {
+    if (!entry || entry.charges <= 0) return;
+    const def = engramCatalogById[entry.id];
+    const spent = spendAllEngramCharges(storageKey, entry.id);
+    if (spent <= 0) return;
+    if (def?.rollsIntoMethod) {
+      onStageForRoller?.(entry.id, entry.name, spent);
+      setPopup({ kind: "staged", name: entry.name, charges: spent });
+    } else {
+      setPopup({ kind: "effect", name: entry.name, text: def?.effect ?? "" });
+    }
   };
 
   // border/shadow driven by hold progress — same accent as Gear's widget,
@@ -141,16 +173,30 @@ export function EngramBriefWidget({
         transition: holdProgress > 0 ? 'none' : 'background 0.3s, border-color 0.4s, box-shadow 0.4s',
       }}
       onPointerDown={e => {
-        touchStartX.current = e.clientX;
+        touchStart.current = { x: e.clientX, y: e.clientY };
         e.currentTarget.setPointerCapture(e.pointerId);
+        // Lock page scroll for this gesture — an underlying scroll
+        // fighting the same finger movement makes the swipe-to-cycle and
+        // long-press-to-activate gestures here harder to land.
+        lockScroll();
         startHold();
       }}
+      onPointerMove={e => {
+        if (!touchStart.current || !isHolding.current) return;
+        const dx = e.clientX - touchStart.current.x;
+        const dy = e.clientY - touchStart.current.y;
+        if (Math.abs(dx) > MOVE_CANCEL_PX || Math.abs(dy) > MOVE_CANCEL_PX) {
+          cancelHold();
+        }
+      }}
       onPointerUp={e => {
-        const dx = touchStartX.current !== null ? e.clientX - touchStartX.current : 0;
+        const start = touchStart.current;
+        const dx = start !== null ? e.clientX - start.x : 0;
         const fired = holdFired.current;
         cancelHold();
         holdFired.current = false;
-        touchStartX.current = null;
+        if (touchStart.current) unlockScroll();
+        touchStart.current = null;
         if (fired) return;
         if (Math.abs(dx) > SWIPE_THRESHOLD_PX) {
           // Swipe left reveals the next Engram (drag finger left), swipe
@@ -159,17 +205,16 @@ export function EngramBriefWidget({
           if (dx < 0) next(); else prev();
           return;
         }
-        // A tap spends 1 charge; charges can only ever be refilled by Full
-        // Rest (or equivalent), never by tapping — there is no more
-        // free-recharge-via-tap. A tap while already at 0 is a no-op.
-        if (entry && entry.charges > 0) {
-          spendEngramCharges(storageKey, entry.id, 1);
+        // A tap charges/preps one more stack, wrapping back to 0 once at
+        // max copies — a tap never spends anything, that's long-press's job.
+        if (entry) {
+          addEngramCharge(storageKey, entry.id);
           setFlashIn(true);
           setTimeout(() => setFlashIn(false), 300);
         }
       }}
-      onPointerLeave={() => { cancelHold(); touchStartX.current = null; }}
-      onPointerCancel={() => { cancelHold(); touchStartX.current = null; }}
+      onPointerLeave={() => { cancelHold(); if (touchStart.current) unlockScroll(); touchStart.current = null; }}
+      onPointerCancel={() => { cancelHold(); if (touchStart.current) unlockScroll(); touchStart.current = null; }}
       onContextMenu={e => e.preventDefault()}
     >
       <span
@@ -237,12 +282,12 @@ export function EngramBriefWidget({
           {safeIdx + 1} / {activeCount}
         </span>
       </div>
-      {popupEntry && (
+      {popup && (
         <div
           role="button"
           tabIndex={0}
           aria-label="Close"
-          onPointerDown={e => { e.stopPropagation(); setPopupEntry(null); }}
+          onPointerDown={e => { e.stopPropagation(); setPopup(null); }}
           style={{
             position: 'fixed',
             inset: 0,
@@ -274,11 +319,26 @@ export function EngramBriefWidget({
                 marginBottom: 8,
               }}
             >
-              {popupEntry.name}
+              Engrams Charged to Roll
             </div>
-            <div style={{ fontSize: '0.8rem', color: 'rgba(248,250,252,0.5)', fontStyle: 'italic' }}>
-              Nothing here yet.
+            <div
+              style={{
+                fontSize: '0.8rem',
+                color: 'rgba(248,250,252,0.85)',
+                marginBottom: popup.kind === "staged" ? 8 : 0,
+              }}
+            >
+              {popup.name}
             </div>
+            {popup.kind === "staged" ? (
+              <div style={{ fontSize: '0.78rem', color: 'rgba(248,250,252,0.6)' }}>
+                Staged × {popup.charges} — tap the standby chip in any Method's roll popup to roll it in.
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.78rem', color: 'rgba(248,250,252,0.6)', fontStyle: 'italic' }}>
+                {popup.text}
+              </div>
+            )}
           </div>
         </div>
       )}

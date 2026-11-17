@@ -149,7 +149,8 @@ export default function NotesPage({ storageKey = NOTES_STORAGE_KEY }: { storageK
                     background: 'rgba(255,255,255,0.06)',
                     color: 'inherit',
                     padding: '10px 12px',
-                    fontSize: '0.95rem',
+                    // 16px minimum keeps iOS Safari from auto-zooming on focus.
+                    fontSize: '16px',
                     outline: 'none',
                   }}
                 />
@@ -215,7 +216,8 @@ export default function NotesPage({ storageKey = NOTES_STORAGE_KEY }: { storageK
                     background: 'rgba(255,255,255,0.04)',
                     color: 'inherit',
                     padding: '12px',
-                    fontSize: '0.95rem',
+                    // 16px minimum keeps iOS Safari from auto-zooming on focus.
+                    fontSize: '16px',
                     fontFamily: 'inherit',
                     lineHeight: 1.5,
                     outline: 'none',

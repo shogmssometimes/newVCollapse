@@ -84,8 +84,8 @@ const DisplayCard: React.FC<{
       {/* Header stripe — EDIT lives here so it never overlaps content */}
       <div style={{ background: 'linear-gradient(90deg, #0c2a2e 0%, #0f3a40 50%, #0c2a2e 100%)', borderBottom: '1px solid var(--accent)', padding: '8px 12px 8px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.18em', fontSize: '1.05rem', color: 'var(--accent)', flex: 1 }}>COLLAPSE</span>
-        <span style={{ fontSize: '0.62rem', color: 'rgba(15,246,255,0.5)', letterSpacing: '0.14em', fontFamily: 'var(--font-display)' }}>OPERATIVE ID</span>
-        <button type="button" onClick={onEdit} aria-label="Edit bio card" style={{ background: 'rgba(15,246,255,0.12)', border: '1px solid rgba(15,246,255,0.3)', borderRadius: 5, color: 'var(--accent)', fontSize: '0.6rem', letterSpacing: '0.12em', fontFamily: 'var(--font-display)', padding: '3px 9px', cursor: 'pointer', flexShrink: 0 }}>EDIT</button>
+        <span style={{ fontSize: '0.7rem', color: 'rgba(15,246,255,0.5)', letterSpacing: '0.14em', fontFamily: 'var(--font-display)' }}>OPERATIVE ID</span>
+        <button type="button" onClick={onEdit} aria-label="Edit bio card" style={{ background: 'rgba(15,246,255,0.12)', border: '1px solid rgba(15,246,255,0.3)', borderRadius: 5, color: 'var(--accent)', fontSize: '0.7rem', letterSpacing: '0.12em', fontFamily: 'var(--font-display)', padding: '8px 14px', minHeight: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, boxSizing: 'border-box' }}>EDIT</button>
       </div>
 
       {/* Photo */}
@@ -99,7 +99,7 @@ const DisplayCard: React.FC<{
                 <circle cx="12" cy="8" r="4" />
                 <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
               </svg>
-              <span style={{ fontSize: '0.62rem', letterSpacing: '0.14em', fontFamily: 'var(--font-display)' }}>NO PHOTO</span>
+              <span style={{ fontSize: '0.7rem', letterSpacing: '0.14em', fontFamily: 'var(--font-display)' }}>NO PHOTO</span>
             </div>
           )}
         </div>
@@ -107,7 +107,7 @@ const DisplayCard: React.FC<{
 
       {/* Name */}
       <div style={{ padding: '14px 16px 14px' }}>
-        <div style={{ fontSize: '0.6rem', color: 'rgba(15,246,255,0.5)', letterSpacing: '0.16em', fontFamily: 'var(--font-display)', marginBottom: 3 }}>OPERATIVE NAME</div>
+        <div style={{ fontSize: '0.7rem', color: 'rgba(15,246,255,0.5)', letterSpacing: '0.16em', fontFamily: 'var(--font-display)', marginBottom: 3 }}>OPERATIVE NAME</div>
         <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: '1.6rem', letterSpacing: '0.06em', color: '#fff', lineHeight: 1, wordBreak: 'break-word' }}>{displayName}</h2>
       </div>
 
@@ -117,7 +117,7 @@ const DisplayCard: React.FC<{
       {data.keyFeatures.some(f => f.trim()) && (
         <>
           <div style={{ padding: '14px 16px 12px' }}>
-            <div style={{ fontSize: '0.62rem', color: 'rgba(15,246,255,0.55)', letterSpacing: '0.18em', fontFamily: 'var(--font-display)', marginBottom: 8 }}>KEY FEATURES</div>
+            <div style={{ fontSize: '0.7rem', color: 'rgba(15,246,255,0.55)', letterSpacing: '0.18em', fontFamily: 'var(--font-display)', marginBottom: 8 }}>KEY FEATURES</div>
             <ul style={{ display: 'flex', flexDirection: 'column', gap: 5, margin: 0, padding: 0, listStyle: 'none' }}>
               {data.keyFeatures.filter(f => f.trim()).map((feat, idx) => (
                 <li key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
@@ -133,7 +133,7 @@ const DisplayCard: React.FC<{
 
       {/* Mini CS Matrix */}
       <div style={{ padding: '12px 16px 10px' }}>
-        <div style={{ fontSize: '0.62rem', color: 'rgba(15,246,255,0.55)', letterSpacing: '0.18em', fontFamily: 'var(--font-display)', marginBottom: 6 }}>CS MATRIX</div>
+        <div style={{ fontSize: '0.7rem', color: 'rgba(15,246,255,0.55)', letterSpacing: '0.18em', fontFamily: 'var(--font-display)', marginBottom: 6 }}>CS MATRIX</div>
         <div style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(15,246,255,0.15)', aspectRatio: '1 / 1', width: '100%', background: '#07080f', position: 'relative' }}>
           <iframe
             title="CS Matrix Preview"
@@ -150,7 +150,7 @@ const DisplayCard: React.FC<{
       {/* Barcode footer */}
       <div style={{ background: 'rgba(0,0,0,0.4)', borderTop: '1px solid rgba(15,246,255,0.12)', padding: '8px 16px 10px' }}>
         <BarcodeStripe />
-        <div style={{ fontFamily: 'Courier Prime, Courier New, monospace', fontSize: '0.55rem', color: 'rgba(255,255,255,0.62)', letterSpacing: '0.2em', textAlign: 'center', marginTop: 2 }}>
+        <div style={{ fontFamily: 'Courier Prime, Courier New, monospace', fontSize: '0.7rem', color: 'rgba(255,255,255,0.62)', letterSpacing: '0.2em', textAlign: 'center', marginTop: 2 }}>
           COLLAPSE-RPG • OPERATIVE FILE
         </div>
       </div>
@@ -216,25 +216,25 @@ const SetupForm: React.FC<{
           )}
         </div>
         <div>
-          <div style={{ fontSize: '0.62rem', color: 'rgba(15,246,255,0.5)', letterSpacing: '0.14em', fontFamily: 'var(--font-display)', marginBottom: 3 }}>OPERATIVE</div>
+          <div style={{ fontSize: '0.7rem', color: 'rgba(15,246,255,0.5)', letterSpacing: '0.14em', fontFamily: 'var(--font-display)', marginBottom: 3 }}>OPERATIVE</div>
           <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.15rem', letterSpacing: '0.06em', color: '#fff' }}>{displayName}</div>
-          <div style={{ fontSize: '0.68rem', color: 'var(--muted)', marginTop: 2 }}>Name set in Character Management</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginTop: 2 }}>Name set in Character Management</div>
         </div>
       </div>
 
       {/* Imgur input */}
       <div style={{ background: 'rgba(15,246,255,0.03)', border: '1px solid rgba(15,246,255,0.12)', borderRadius: 10, padding: '14px' }}>
-        <div style={{ fontSize: '0.62rem', color: 'rgba(15,246,255,0.55)', letterSpacing: '0.18em', fontFamily: 'var(--font-display)', marginBottom: 8 }}>PHOTO URL (IMGUR)</div>
+        <div style={{ fontSize: '0.7rem', color: 'rgba(15,246,255,0.55)', letterSpacing: '0.18em', fontFamily: 'var(--font-display)', marginBottom: 8 }}>PHOTO URL (IMGUR)</div>
         <input
           type="url"
           value={data.rawImgurInput}
           onChange={e => handleImgurInput(e.target.value)}
           placeholder="https://imgur.com/XXXXX"
           aria-label="Photo URL (Imgur)"
-          style={{ width: '100%', background: 'rgba(15,246,255,0.04)', border: '1px solid rgba(15,246,255,0.18)', borderRadius: 6, color: '#fff', fontSize: '0.72rem', fontFamily: 'Courier Prime, Courier New, monospace', padding: '7px 10px', outline: 'none', boxSizing: 'border-box' }}
+          style={{ width: '100%', background: 'rgba(15,246,255,0.04)', border: '1px solid rgba(15,246,255,0.18)', borderRadius: 6, color: '#fff', fontSize: '16px', fontFamily: 'Courier Prime, Courier New, monospace', padding: '7px 10px', outline: 'none', boxSizing: 'border-box' }}
         />
         {data.pfpUrl && data.pfpUrl !== data.rawImgurInput && (
-          <div style={{ marginTop: 5, fontSize: '0.62rem', color: imgError ? '#d42b2b' : 'rgba(15,246,255,0.5)', fontFamily: 'Courier Prime, Courier New, monospace', wordBreak: 'break-all' }}>
+          <div style={{ marginTop: 5, fontSize: '0.7rem', color: imgError ? '#d42b2b' : 'rgba(15,246,255,0.5)', fontFamily: 'Courier Prime, Courier New, monospace', wordBreak: 'break-all' }}>
             {imgError ? '⚠ Could not load image' : `→ ${data.pfpUrl}`}
           </div>
         )}
@@ -242,7 +242,7 @@ const SetupForm: React.FC<{
 
       {/* Key Features */}
       <div style={{ background: 'rgba(15,246,255,0.03)', border: '1px solid rgba(15,246,255,0.12)', borderRadius: 10, padding: '14px' }}>
-        <div style={{ fontSize: '0.62rem', color: 'rgba(15,246,255,0.55)', letterSpacing: '0.18em', fontFamily: 'var(--font-display)', marginBottom: 10 }}>KEY FEATURES</div>
+        <div style={{ fontSize: '0.7rem', color: 'rgba(15,246,255,0.55)', letterSpacing: '0.18em', fontFamily: 'var(--font-display)', marginBottom: 10 }}>KEY FEATURES</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {data.keyFeatures.map((feat, idx) => (
             <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -255,7 +255,7 @@ const SetupForm: React.FC<{
                   onBlur={() => setEditingFeatureIdx(null)}
                   onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') setEditingFeatureIdx(null); }}
                   aria-label={`Key feature ${idx + 1}`}
-                  style={{ flex: 1, background: 'rgba(15,246,255,0.06)', border: '1px solid rgba(15,246,255,0.25)', borderRadius: 4, color: '#fff', fontSize: '0.78rem', fontFamily: 'inherit', padding: '4px 8px', outline: 'none' }}
+                  style={{ flex: 1, background: 'rgba(15,246,255,0.06)', border: '1px solid rgba(15,246,255,0.25)', borderRadius: 4, color: '#fff', fontSize: '16px', fontFamily: 'inherit', padding: '4px 8px', outline: 'none' }}
                   autoFocus
                 />
               ) : (

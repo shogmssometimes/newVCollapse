@@ -46,7 +46,7 @@ const STATUS_EFFECTS_CATALOG = [
   { name: 'Confused', effect: 'Roll twice, take lower' },
   { name: 'Discombobulated', effect: 'Roll 1d4, on 1, Combat Actions hit a random target' },
   { name: 'Focused', effect: 'On rolls, roll twice, take higher' },
-  { name: 'Shielded', effect: "Attacks against you hit the Set first. Subtract the attacker's Total from the Set. If the Set holds, the attack does nothing except reduce the Set. If the Total is higher, the Shield breaks, and the leftover becomes the attack's Total against your defense roll." },
+  { name: 'Shielded', effect: "Attacks against you hit the Set first. No Wounds are produced. Subtract the attacker's whole Total from the Set. If the Set holds, the attack does nothing except reduce the Set. If the Total is higher, the Shield breaks, and the leftover becomes the attack's Total against your defense roll." },
   { name: 'Fortified', effect: 'WT increased by 1' },
   { name: 'Hastened', effect: 'Gain an extra Movement Action each round this remains active' },
   { name: 'Energized', effect: 'Gain +1 Non Movement Action' },
@@ -304,15 +304,24 @@ function createStyles() {
     .status-roll-header span.col-clear { flex: 10 1 0; text-align: center; }
     .status-roll-rows { display: flex; flex-direction: column; gap: 6px; }
     .status-roll-row { display: flex; flex-direction: column; gap: 4px; position: relative; }
+    /* Marks a freshly-sent roll as "new" until the player names it, instead
+       of pre-filling the Name field with placeholder text that had to be
+       deleted every time. */
+    .status-roll-row-new { animation: status-roll-row-new-glow 1.8s ease-in-out infinite; border-radius: 8px; }
+    .status-roll-row-new .status-roll-name-input { border-color: rgba(255,212,59,0.7); }
+    @keyframes status-roll-row-new-glow {
+      0%, 100% { box-shadow: 0 0 0 rgba(255,212,59,0); }
+      50% { box-shadow: 0 0 14px rgba(255,212,59,0.45); }
+    }
     .status-roll-row-main { display: flex; gap: 6px; align-items: stretch; }
     .status-roll-name-wrap { position: relative; flex: 26 1 0; min-width: 0; }
-    .status-roll-name-input { width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 7px 8px; font-size: 11px; color: #e9f0ff; outline: none; }
+    .status-roll-name-input { width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 7px 8px; font-size: 16px; color: #e9f0ff; outline: none; }
     .status-roll-name-input:focus { border-color: rgba(61,232,192,0.45); }
     .status-roll-suggestions { position: absolute; top: 100%; left: 0; right: 0; margin-top: 3px; background: #0d1117; border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; max-height: 170px; overflow-y: auto; z-index: 30; box-shadow: 0 10px 28px rgba(0,0,0,0.55); }
     .status-roll-suggestion { padding: 8px 10px; font-size: 11px; color: #e9f0ff; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.06); }
     .status-roll-suggestion:last-child { border-bottom: none; }
     .status-roll-suggestion:hover { background: rgba(61,232,192,0.16); }
-    .status-roll-effect { flex: 42 1 0; min-width: 0; box-sizing: border-box; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 7px 8px; font-size: 10px; color: rgba(248,250,252,0.8); outline: none; line-height: 1.25; }
+    .status-roll-effect { flex: 42 1 0; min-width: 0; box-sizing: border-box; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 7px 8px; font-size: 16px; color: rgba(248,250,252,0.8); outline: none; line-height: 1.25; }
     .status-roll-effect[data-readonly="1"] { color: rgba(248,250,252,0.55); font-style: italic; }
     .status-roll-effect:focus { border-color: rgba(61,232,192,0.3); }
     .status-roll-value-wrap { flex: 22 1 0; display: flex; align-items: center; justify-content: center; gap: 4px; position: relative; }
@@ -1105,6 +1114,12 @@ function buildStatusRollsPanel() {
     rows.forEach((row, idx) => {
       const rowEl = document.createElement('div')
       rowEl.className = 'status-roll-row'
+      // Glow a row "new" (persists until the player gives it a name)
+      // rather than pre-filling the Name field with placeholder text that
+      // had to be deleted every time (see addSetRollRow in
+      // chudVanillaBridge.ts, which now leaves row.name blank).
+      const syncNewGlow = () => rowEl.classList.toggle('status-roll-row-new', !row.name.trim())
+      syncNewGlow()
 
       const dirBtn = document.createElement('button')
       dirBtn.className = 'status-roll-direction'
@@ -1196,6 +1211,7 @@ function buildStatusRollsPanel() {
             effectInput.readOnly = true
             effectInput.dataset.readonly = '1'
             suggestionsEl.style.display = 'none'
+            syncNewGlow()
             persist()
           })
           suggestionsEl.appendChild(option)
@@ -1221,6 +1237,7 @@ function buildStatusRollsPanel() {
 
       nameInput.addEventListener('input', () => {
         row.name = nameInput.value
+        syncNewGlow()
         const match = byName.get(normalizeName(row.name))
         if (match) {
           row.effect = match.effect
@@ -1251,6 +1268,7 @@ function buildStatusRollsPanel() {
             effectInput.readOnly = true
             effectInput.dataset.readonly = '1'
             suggestionsEl.style.display = 'none'
+            syncNewGlow()
             persist()
           }
         }

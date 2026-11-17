@@ -2174,6 +2174,12 @@ button.hub-card:not(:disabled):active {
   background: rgba(255, 255, 255, 0.04);
   border-radius: 6px;
   padding: 6px 10px;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   font-size: 1rem;
   line-height: 1;
   cursor: pointer;
@@ -2457,9 +2463,4 @@ button.hub-card:not(:disabled):active {
   min-width: 1.2em;
   text-align: center;
   font-weight: 700;
-}
-
-.engram-charges-readout {
-  font-size: 0.78rem;
-  color: rgba(248, 250, 252, 0.7);
 }

@@ -87,7 +87,7 @@ export default function MgrPage({
         <div className="row-rdy-mgr">
           <Wallet charSlot={charSlot} />
           <button className="topbar-square-btn" onClick={onCloseMgr}>
-            XMGR
+            <span aria-hidden="true" style={{ marginRight: 4 }}>✕</span>MGR
           </button>
         </div>
         <SecondaryStatsPanel

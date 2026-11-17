@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { GearSlotEntry } from "../../types/chud";
 import { STANDARD_LONG_PRESS_MS } from "../../utils/gestureConstants";
+import { lockScroll, unlockScroll } from "../../utils/scrollLock";
 
 // Mirrors Gear.tsx's parseNonNegativeInt — defensive parse for entries that
 // may hold a negative/fractional/non-numeric string.
@@ -31,8 +32,12 @@ export function GearBriefWidget({
   const isHolding = useRef(false);
   const holdFired = useRef(false);
 
-  // only show entries with QTY > 0
-  const activeEntries = entries.slice(0, count).filter(e => {
+  // Only show entries with QTY > 0. Scan the full entries array (not just
+  // the first `count` slots) — Gear.tsx intentionally allows items to be
+  // stashed in slots beyond the Vigor-derived visible count (so an
+  // Over-Encumbered stash is still tracked), and those items are still
+  // genuinely equipped/stocked, so the HUD queue must still surface them.
+  const activeEntries = entries.filter(e => {
     const q = parseFloat(e.qty);
     return !isNaN(q) && q > 0;
   });
@@ -79,7 +84,10 @@ export function GearBriefWidget({
           const updated = arr.map((e, i) => {
             if (i !== entryOriginalIdx) return e;
             const q = parseFloat(e.qty);
-            return { ...e, qty: String(isNaN(q) || q <= 0 ? 0 : q - 1) };
+            const next = isNaN(q) || q <= 0 ? 0 : q - 1;
+            // Using the last unit clears the slot entirely instead of
+            // leaving a stale qty-0 row behind.
+            return next > 0 ? { ...e, qty: String(next) } : { name: '', units: '', qty: '' };
           });
           // Recompute slotsUsed from the updated entries (same formula as
           // Gear.tsx) instead of carrying the stale saved total forward —
@@ -174,6 +182,7 @@ export function GearBriefWidget({
       onPointerDown={e => {
         touchStartX.current = e.clientX;
         e.currentTarget.setPointerCapture(e.pointerId);
+        lockScroll();
         startHold();
       }}
       onPointerUp={e => {
@@ -181,13 +190,14 @@ export function GearBriefWidget({
         const fired = holdFired.current;
         cancelHold();
         holdFired.current = false;
+        if (touchStartX.current !== null) unlockScroll();
         if (!fired && Math.abs(dx) <= 30) {
           next();
         }
         touchStartX.current = null;
       }}
-      onPointerLeave={() => { cancelHold(); touchStartX.current = null; }}
-      onPointerCancel={() => { cancelHold(); touchStartX.current = null; }}
+      onPointerLeave={() => { cancelHold(); if (touchStartX.current !== null) unlockScroll(); touchStartX.current = null; }}
+      onPointerCancel={() => { cancelHold(); if (touchStartX.current !== null) unlockScroll(); touchStartX.current = null; }}
       onContextMenu={e => e.preventDefault()}
     >
       <span

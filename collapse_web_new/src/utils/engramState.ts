@@ -55,7 +55,10 @@ export function setEngramCopies(storageKey: string, engramId: string, copies: nu
   if (safeCopies <= 0) {
     delete equipped[engramId]
   } else {
-    const prevCharges = equipped[engramId]?.charges ?? safeCopies
+    // A brand-new equip starts uncharged (0) — charges are only ever built
+    // up afterward via the Engram Q's tap-to-charge gesture or a Full Rest,
+    // never granted for free just by equipping a copy.
+    const prevCharges = equipped[engramId]?.charges ?? 0
     equipped[engramId] = { copies: safeCopies, charges: Math.min(prevCharges, safeCopies) }
   }
   writeEngramState(storageKey, { ...state, equipped })
@@ -70,6 +73,33 @@ export function spendEngramCharges(storageKey: string, engramId: string, amount:
     ...state.equipped,
     [engramId]: { ...current, charges: Math.max(0, current.charges - Math.max(0, amount)) },
   }
+  writeEngramState(storageKey, { ...state, equipped })
+}
+
+/** Adds `amount` charges back to one Engram — used to refund a Stack that
+ * was swapped out of the roller before being Confirmed/sent to Margin, and
+ * clamped to the Engram's copies count (its max-charges pool). */
+export function refundEngramCharges(storageKey: string, engramId: string, amount: number): void {
+  const state = readEngramState(storageKey)
+  const current = state.equipped[engramId]
+  if (!current || amount <= 0) return
+  const equipped = {
+    ...state.equipped,
+    [engramId]: { ...current, charges: Math.min(current.copies, current.charges + amount) },
+  }
+  writeEngramState(storageKey, { ...state, equipped })
+}
+
+/** The Engram Q widget's tap gesture: charges/preps one more stack (+1),
+ * wrapping back down to 0 once at max copies — this is the "charging up"
+ * half of prepped → charged → spent; charges are only ever spent via a
+ * long-press (spendAllEngramCharges) or a Full Rest, never lost to a tap. */
+export function addEngramCharge(storageKey: string, engramId: string): void {
+  const state = readEngramState(storageKey)
+  const current = state.equipped[engramId]
+  if (!current) return
+  const next = current.charges >= current.copies ? 0 : current.charges + 1
+  const equipped = { ...state.equipped, [engramId]: { ...current, charges: next } }
   writeEngramState(storageKey, { ...state, equipped })
 }
 

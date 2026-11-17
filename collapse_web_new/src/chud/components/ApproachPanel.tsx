@@ -139,8 +139,9 @@ export function ApproachPanel({
   onReceiveGanbare,
   approachWardrobeBonus,
   approachWardrobeItems,
-  engramOptions,
-  onSpendEngram,
+  stagedEngram,
+  onConsumeStagedEngram,
+  onRefundEngram,
 }: {
   core: CoreStats;
   approach: ApproachStats;
@@ -156,10 +157,12 @@ export function ApproachPanel({
   approachWardrobeBonus: Partial<Record<keyof ApproachStats, number>>;
   /** Wardrobe item names/bonuses contributing to each Method's bonus, for a tooltip. */
   approachWardrobeItems: Partial<Record<keyof ApproachStats, string[]>>;
-  /** Qualifying equipped Engrams with charges > 0 — every Method roll popup shares this same standby list. */
-  engramOptions: Array<{ id: string; name: string; charges: number }>;
-  /** Spends every charge of one Engram at once, permanently — tapping its standby icon is final, no undo/refund path. */
-  onSpendEngram: (engramId: string) => number;
+  /** The single globally-staged Engram (from the HUD's Engram Q long-press), if any — shared by every Method roll popup as a standby chip. */
+  stagedEngram: { id: string; name: string; charges: number } | null;
+  /** Clears the global staged Engram once a popup activates it into its own Stack. */
+  onConsumeStagedEngram: () => void;
+  /** Refunds an already-activated Engram Stack's charges back to the Q — used when swapping Stacks. */
+  onRefundEngram: (engramId: string, amount: number) => void;
 }) {
   const coreGroups = useMemo<Array<keyof CoreStats>>(() => ["vigor", "inference", "personality"], []);
   const fumbleNumber = useMemo(() => computeFumbleNumber(core), [core]);
@@ -274,8 +277,9 @@ export function ApproachPanel({
                     fumbleNumber={fumbleNumber}
                     onRoll={(count) => onRollApproachDie(field, count)}
                     onOverload={(baseCount, wardrobeCount) => onOverloadApproachDie(field, baseCount, wardrobeCount)}
-                    engramOptions={engramOptions}
-                    onSpendEngram={onSpendEngram}
+                    stagedEngram={stagedEngram}
+                    onConsumeStagedEngram={onConsumeStagedEngram}
+                    onRefundEngram={onRefundEngram}
                   />
                 );
               })}

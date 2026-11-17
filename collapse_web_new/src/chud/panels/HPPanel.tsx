@@ -24,6 +24,7 @@ export function HPPanel({
   inventorySlots,
   engramState,
   engramStorageKey,
+  onStageForRoller,
   methods,
 }: {
   hpCounter: number;
@@ -41,6 +42,8 @@ export function HPPanel({
   inventorySlots: number;
   engramState: EngramManagerState;
   engramStorageKey: string;
+  /** Stages a roll-type Engram's charge count as the shared standby chip in every Method roll popup. */
+  onStageForRoller: (id: string, name: string, charges: number) => void;
   /** The Methods (ApproachPanel) section, rendered directly below HP. */
   methods: ReactNode;
 }) {
@@ -99,6 +102,7 @@ export function HPPanel({
       <EngramPanel
         engramState={engramState}
         engramStorageKey={engramStorageKey}
+        onStageForRoller={onStageForRoller}
       />
       {/* Grit/Collapse meter vanilla widget from meter-bridge.js mounts here,
           directly below the gear queue. */}

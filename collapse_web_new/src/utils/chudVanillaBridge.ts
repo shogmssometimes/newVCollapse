@@ -50,10 +50,11 @@ function notify(key: string, json: string) {
 
 /**
  * Prepends a new Set Roll row (HUD "Set Rolls" widget) with the given value.
- * Defaults the Name to "New Effect" (edit at the HUD) rather than leaving it
- * blank, since a roll sent this way is nearly always meant to back a new
- * status/effect entry. Placed at the front of the list so it survives the
- * widget's 10-row display cap.
+ * Name starts blank (not "New Effect") — a glow on the row instead marks it
+ * as new until the player types their own name (see meter-bridge.js's Set
+ * Rolls widget, which keys that glow off an empty name rather than this
+ * pre-fill text so there's no boilerplate to delete every time). Placed at
+ * the front of the list so it survives the widget's 10-row display cap.
  */
 export function addSetRollRow(value: number): void {
   try {
@@ -62,7 +63,7 @@ export function addSetRollRow(value: number): void {
     const rows = Array.isArray(parsed.rows) ? parsed.rows : [];
     const row: StatusRollRow = {
       id: `sr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      name: "New Effect",
+      name: "",
       effect: "",
       roll: value,
     };

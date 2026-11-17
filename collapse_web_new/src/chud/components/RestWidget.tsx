@@ -18,29 +18,12 @@ import {
   maxGritForCollapse,
 } from "../../utils/chudVanillaBridge";
 
-function readState(storageKey: string): Record<string, unknown> {
-  try {
-    return JSON.parse(window.localStorage.getItem(storageKey) || "{}");
-  } catch {
-    return {};
-  }
-}
-
-function writeState(storageKey: string, patch: Record<string, unknown>) {
-  try {
-    const next = { ...readState(storageKey), ...patch };
-    window.localStorage.setItem(storageKey, JSON.stringify(next));
-  } catch {
-    // storage unavailable — ignore
-  }
-}
-
 // Dig Deep / Full Rest, rendered at the bottom of the AAG page. Every Rest
 // effect is rolled up-front and queued as a notification — nothing applies
 // automatically.
-//   - Full Rest: Grit set to 1d6 + Rest Bonus (max 6), HP to max, Overload
-//     dice (Method dice) fully reset, all Engram charges refilled, and
-//     Ganbare! Charges restored to max.
+//   - Full Rest: Grit restored by rolling 1d6, capped so Grit cannot exceed
+//     (6 − current Collapse); HP to max; Overload dice (Method dice) fully
+//     reset; all Engram charges refilled.
 export function RestWidget({
   storageKey,
   deckBuilderStorageKey,
@@ -56,10 +39,6 @@ export function RestWidget({
   const [fullRestPending, setFullRestPending] = useState<boolean>(() =>
     typeof window !== "undefined" ? hasPendingNotification("full-rest") : false
   );
-  const [restBonus, setRestBonus] = useState<number>(() => {
-    const v = readState(storageKey).restBonus;
-    return typeof v === "number" ? v : 0;
-  });
 
   useEffect(() => {
     const handler = (e: StorageEvent) => {
@@ -94,36 +73,26 @@ export function RestWidget({
 
   const onFullRest = useCallback(() => {
     if (hasPendingNotification("full-rest")) return;
+    // Grit restores by rolling 1d6, capped so Grit cannot exceed (6 − current
+    // Collapse) — Full Rest does not restore Ganbare! Charges.
     const roll = 1 + Math.floor(Math.random() * 6);
     const { grit: currentGrit, collapse } = readGlobalMeters();
     const maxGrit = maxGritForCollapse(collapse);
-    const targetGrit = Math.min(maxGrit, roll + restBonus);
+    const targetGrit = Math.min(maxGrit, roll);
     const gritDelta = targetGrit - currentGrit;
     const activeCore = core ?? readCore(storageKey) ?? ZERO_CORE;
     const hpMax = computeDerived(activeCore).hp;
     const hpDelta = hpMax - readHpCounter(storageKey);
-    const bonusText = restBonus ? ` + ${restBonus} Rest Bonus` : "";
-    const capNote = roll + restBonus > maxGrit ? ` (max Grit is ${maxGrit} with current Collapse)` : "";
+    const capNote = roll > maxGrit ? ` (max Grit is ${maxGrit} with current Collapse)` : "";
     const created = pushNotification(
       "full-rest",
       "Full Rest",
-      `Rolled ${roll}${bonusText} for Grit${capNote}. Accept to set Grit to ${targetGrit}, restore HP to full, refill all Engram charges, reset Method dice, and restore all Ganbare! Charges.`,
+      `Rolled ${roll} for Grit${capNote}. Accept to set Grit to ${targetGrit}, restore HP to full, refill all Engram charges, and reset Method dice.`,
       { grit: gritDelta, hp: hpDelta, restoreOverload: true, fullEngramRestore: true },
       { roll: { die: 6, value: roll } }
     );
     if (created) setFullRestPending(true);
-  }, [core, storageKey, restBonus]);
-
-  const changeRestBonus = useCallback(
-    (delta: number) => {
-      setRestBonus((prev) => {
-        const next = Math.max(0, prev + delta);
-        writeState(storageKey, { restBonus: next });
-        return next;
-      });
-    },
-    [storageKey]
-  );
+  }, [core, storageKey]);
 
   return (
     <div className="mods rest-widget">
@@ -139,27 +108,15 @@ export function RestWidget({
         >
           {digDeepPending ? "Dig Deep (pending…)" : "Dig Deep"}
         </button>
-        <div className="full-rest-row">
-          <button
-            type="button"
-            className="rest-stack-btn fullrest"
-            onClick={onFullRest}
-            disabled={fullRestPending}
-            title={fullRestPending ? "Resolve the pending Full Rest notification first" : undefined}
-          >
-            {fullRestPending ? "Full Rest (pending…)" : "Full Rest"}
-          </button>
-          <div className="rest-bonus-stepper" title="GM-set Rest Bonus added to the Full Rest Grit roll">
-            <span>Rest Bonus</span>
-            <button type="button" onClick={() => changeRestBonus(-1)} disabled={restBonus <= 0}>
-              −
-            </button>
-            <span className="rest-bonus-value">{restBonus}</span>
-            <button type="button" onClick={() => changeRestBonus(1)}>
-              +
-            </button>
-          </div>
-        </div>
+        <button
+          type="button"
+          className="rest-stack-btn fullrest"
+          onClick={onFullRest}
+          disabled={fullRestPending}
+          title={fullRestPending ? "Resolve the pending Full Rest notification first" : undefined}
+        >
+          {fullRestPending ? "Full Rest (pending…)" : "Full Rest"}
+        </button>
       </div>
     </div>
   );

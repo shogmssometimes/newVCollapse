@@ -480,7 +480,7 @@ const STATUS_EFFECTS_CATALOG: { name: string; effect: string }[] = [
   { name: "Confused", effect: "Roll twice, take lower" },
   { name: "Discombobulated", effect: "Roll 1d4, on 1, Combat Actions hit a random target" },
   { name: "Focused", effect: "On rolls, roll twice, take higher" },
-  { name: "Shielded", effect: "Damage halved" },
+  { name: "Shielded", effect: "Attacks against you hit the Set first. No Wounds are produced. Subtract the attacker's whole Total from the Set. If the Set holds, the attack does nothing except reduce the Set. If the Total is higher, the Shield breaks, and the leftover becomes the attack's Total against your defense roll." },
   { name: "Fortified", effect: "WT increased by 1" },
   { name: "Hastened", effect: "Any movement costs 1 less AP" },
   { name: "Inspired", effect: "Gain 1 Grit" },
@@ -583,7 +583,7 @@ const SetRollRowView: React.FC<{
               if (first) { e.preventDefault(); applySuggestion(first); }
             }
           }}
-          style={{ width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 8, padding: "7px 8px", fontSize: "0.72rem", color: "#e9f0ff", outline: "none" }}
+          style={{ width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 8, padding: "7px 8px", fontSize: "16px", color: "#e9f0ff", outline: "none" }}
         />
         {suggestions.length > 0 && (
           <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 3, background: "#0d1117", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 8, maxHeight: 170, overflowY: "auto", zIndex: 30, boxShadow: "0 10px 28px rgba(0,0,0,0.55)" }}>
@@ -604,17 +604,17 @@ const SetRollRowView: React.FC<{
         value={row.effect}
         readOnly={effectReadOnly}
         onChange={(e) => { if (!effectReadOnly) onUpdate({ ...row, effect: e.target.value }); }}
-        style={{ flex: "42 1 0", minWidth: 0, boxSizing: "border-box", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "7px 8px", fontSize: "0.68rem", color: effectReadOnly ? "rgba(248,250,252,0.55)" : "rgba(248,250,252,0.8)", fontStyle: effectReadOnly ? "italic" : "normal", outline: "none", lineHeight: 1.25, resize: "none" }}
+        style={{ flex: "42 1 0", minWidth: 0, boxSizing: "border-box", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "7px 8px", fontSize: "16px", color: effectReadOnly ? "rgba(248,250,252,0.55)" : "rgba(248,250,252,0.8)", fontStyle: effectReadOnly ? "italic" : "normal", outline: "none", lineHeight: 1.25, resize: "none" }}
       />
       <div style={{ flex: "22 1 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
         <button
           onClick={() => onUpdate({ ...row, roll: clampStatusRoll(row.roll - 1) })}
-          style={{ width: 24, height: 24, flexShrink: 0, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.07)", color: "#fff", fontSize: "0.85rem", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+          style={{ width: 32, height: 32, minWidth: 32, minHeight: 32, flexShrink: 0, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.07)", color: "#fff", fontSize: "0.95rem", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
         >−</button>
         <span style={{ minWidth: 20, textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 800, color: "#6ac7ff", fontSize: "0.72rem" }}>{row.roll}</span>
         <button
           onClick={() => onUpdate({ ...row, roll: clampStatusRoll(row.roll + 1) })}
-          style={{ width: 24, height: 24, flexShrink: 0, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.07)", color: "#fff", fontSize: "0.85rem", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+          style={{ width: 32, height: 32, minWidth: 32, minHeight: 32, flexShrink: 0, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.07)", color: "#fff", fontSize: "0.95rem", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
         >+</button>
       </div>
       <button

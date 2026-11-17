@@ -410,6 +410,11 @@ const HubLanding: React.FC<{
               onClick={() => setMode(m)}
               style={{
                 padding: "0.4rem 1rem",
+                minHeight: 44,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxSizing: "border-box",
                 fontSize: "0.8rem",
                 letterSpacing: "0.06em",
                 textTransform: "uppercase",
@@ -609,7 +614,7 @@ export default function App() {
         charSlot={charSlot}
         actions={
           <button className="topbar-square-btn" onClick={() => setRoute("chud")} aria-label="Close AAG">
-            XAAG
+            <span aria-hidden="true" style={{ marginRight: 4 }}>✕</span>AAG
           </button>
         }
       >
@@ -635,7 +640,7 @@ export default function App() {
         charSlot={charSlot}
         actions={
           <button className="topbar-square-btn" onClick={() => setRoute("chud")} aria-label="Close AAG">
-            XAAG
+            <span aria-hidden="true" style={{ marginRight: 4 }}>✕</span>AAG
           </button>
         }
       >

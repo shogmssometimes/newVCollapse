@@ -19,9 +19,8 @@ import { clampApproachToCore, clampCore } from "../domain/coreApproachMap";
 import { computeWardrobeBonuses } from "../domain/wardrobeBonus";
 import { loadState, readGearData, readWardrobeData } from "../utils/chudPersistence";
 import { wardrobeKey, deckBuilderKey } from "../utils/slotKeys";
-import { adjustGlobalMeters, resetApproachOverload, resetGanbareCharges, setVanillaBridgeSlot } from "../utils/chudVanillaBridge";
-import { fullRestEngrams, readEngramState, spendAllEngramCharges, type EngramManagerState } from "../utils/engramState";
-import { engramCatalog } from "../data/handbook/engramCatalog";
+import { adjustGlobalMeters, resetApproachOverload, setVanillaBridgeSlot } from "../utils/chudVanillaBridge";
+import { fullRestEngrams, readEngramState, refundEngramCharges, type EngramManagerState } from "../utils/engramState";
 import {
   getNotificationsStorageKey,
   listNotifications,
@@ -300,24 +299,25 @@ export default function Chud() {
     return () => window.removeEventListener("storage", engramHandler);
   }, []);
 
-  // Method roll popup's Engram-icon row (B-whatever: Engrams-into-the-
-  // roller): every qualifying Engram (handbook catalog's rollsIntoMethod,
-  // i.e. not one of the handful that heal/target someone else's roll/do
-  // nothing-rollish at all) that's currently equipped with at least 1
-  // charge shows up as a tappable standby icon in any Method's roll popup.
-  // Tapping one is final — it spends every charge at once with no
-  // undo/refund path, so there's nothing else to wire up here besides the
-  // spend itself.
-  const engramRollerOptions = useMemo(
-    () =>
-      engramCatalog
-        .filter((entry) => entry.rollsIntoMethod)
-        .map((entry) => ({ id: entry.id, name: entry.name, charges: engramState.equipped[entry.id]?.charges ?? 0 }))
-        .filter((entry) => entry.charges > 0),
-    [engramState]
-  );
-  const spendEngramForRoll = useCallback(
-    (engramId: string): number => spendAllEngramCharges(DECK_BUILDER_KEY, engramId),
+  // Method roll popup's Engram standby chip (handbook p25: one Engram
+  // Stack per action). The HUD's Engram Q long-press (EngramBriefWidget's
+  // onStageForRoller) stages a single Engram id/name/charge-count here;
+  // every Method's roll popup shares this same staged slot as its standby
+  // chip. Staging is NOT spending — spendAllEngramCharges already emptied
+  // the Q locally the instant it was staged, so if a popup never activates
+  // it, staging a *different* Engram next (or this component unmounting)
+  // would otherwise strand those charges; onStageForRoller below refunds
+  // whatever was staged-but-unconsumed before replacing it.
+  const [stagedEngram, setStagedEngram] = useState<{ id: string; name: string; charges: number } | null>(null);
+  const onStageForRoller = useCallback((id: string, name: string, charges: number) => {
+    setStagedEngram((prev) => {
+      if (prev && prev.id !== id) refundEngramCharges(DECK_BUILDER_KEY, prev.id, prev.charges);
+      return { id, name, charges };
+    });
+  }, []);
+  const onConsumeStagedEngram = useCallback(() => setStagedEngram(null), []);
+  const onRefundEngram = useCallback(
+    (engramId: string, amount: number) => refundEngramCharges(DECK_BUILDER_KEY, engramId, amount),
     []
   );
 
@@ -362,8 +362,10 @@ export default function Chud() {
           adjustGlobalMeters({ grit: n.effect.grit, collapse: n.effect.collapse });
         }
         if (n.effect.restoreOverload) {
+          // Full Rest restores spent Overload dice, but — despite the
+          // notification message implying otherwise — never refills
+          // Ganbare! Charges; only spending/receiving Ganbare! does that.
           resetApproachOverload(STORAGE_KEY);
-          resetGanbareCharges(STORAGE_KEY);
         }
         if (n.effect.fullEngramRestore) fullRestEngrams(DECK_BUILDER_KEY);
         if (n.kind === "hp-zero") {
@@ -424,6 +426,7 @@ export default function Chud() {
             inventorySlots={inventorySlots}
             engramState={engramState}
             engramStorageKey={DECK_BUILDER_KEY}
+            onStageForRoller={onStageForRoller}
             methods={
               <ApproachPanel
                 core={core}
@@ -436,8 +439,9 @@ export default function Chud() {
                 onReceiveGanbare={receiveGanbare}
                 approachWardrobeBonus={approachWardrobeBonus}
                 approachWardrobeItems={approachWardrobeItems}
-                engramOptions={engramRollerOptions}
-                onSpendEngram={spendEngramForRoll}
+                stagedEngram={stagedEngram}
+                onConsumeStagedEngram={onConsumeStagedEngram}
+                onRefundEngram={onRefundEngram}
               />
             }
           />

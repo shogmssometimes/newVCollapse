@@ -296,7 +296,7 @@ function createStyles() {
     /* ── Status Rolls Panel ───────────────────────────────────────────── */
     .chud-status-rolls { margin-top: 4px; display: flex; flex-direction: column; gap: 8px; }
     .status-roll-header { display: flex; gap: 6px; padding: 0 2px; }
-    .status-roll-header span { font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(248,250,252,0.4); font-weight: 600; }
+    .status-roll-header span { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(248,250,252,0.4); font-weight: 600; }
     .status-roll-header span.col-dir { flex: 11 1 0; text-align: center; }
     .status-roll-header span.col-name { flex: 26 1 0; }
     .status-roll-header span.col-effect { flex: 42 1 0; }

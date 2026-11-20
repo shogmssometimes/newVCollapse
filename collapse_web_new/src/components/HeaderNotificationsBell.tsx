@@ -8,7 +8,7 @@ import {
   setNotificationsSlot,
   type PendingNotification,
 } from "../domain/notifications";
-import { adjustGlobalMeters, adjustHpCounter, readCollapsePath, setCollapsePath, resetApproachOverload, setVanillaBridgeSlot } from "../utils/chudVanillaBridge";
+import { adjustGlobalMeters, adjustHpCounter, readCollapsePath, setCollapsePath, resetApproachOverload, resetGanbareCharges, setVanillaBridgeSlot } from "../utils/chudVanillaBridge";
 import { chudStateKey, deckBuilderKey } from "../utils/slotKeys";
 import { fullRestEngrams } from "../utils/engramState";
 
@@ -53,7 +53,12 @@ export function HeaderNotificationsBell({ charSlot }: { charSlot: number }) {
           adjustGlobalMeters({ grit: n.effect.grit, collapse: n.effect.collapse });
         }
         if (n.effect.restoreOverload) {
+          // Full Rest restores spent Overload dice AND refills Ganbare!
+          // Charges (handbook v12 p42) — must match Chud.tsx's own
+          // restoreOverload handling, since Full Rest can also be accepted
+          // from this bell on the AAG or any other page, not just the HUD.
           resetApproachOverload(chudStateKey(charSlot));
+          resetGanbareCharges(chudStateKey(charSlot));
         }
         if (n.effect.fullEngramRestore) fullRestEngrams(deckBuilderKey(charSlot));
         if (n.kind === "hp-zero") {

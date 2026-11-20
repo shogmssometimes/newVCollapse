@@ -233,6 +233,14 @@
   font-size: 0.7rem;
 }
 
+/* The "LONG PRESS: UP · SWIPE RIGHT: RESET" instructions line was left at
+   the shared compact size above (8px) to avoid wrapping, but that's below
+   the app's 11px text-legibility floor — bump it too and let it wrap
+   instead, same tradeoff made everywhere else in the app. */
+.aag-page2 .approach-die-size-instructions {
+  font-size: 0.8rem;
+}
+
 .aag-page2 .approach-die-size-feedback {
   position: absolute;
   inset: 0;

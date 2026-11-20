@@ -366,9 +366,9 @@ function InventoryEntries({ count, entries, onEntryChange, capacity }: {
       >
         <span />
         <span />
-        <span style={{ fontSize: '0.62rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--muted)' }}>Name</span>
-        <span style={{ fontSize: '0.62rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--muted)' }}>Units</span>
-        <span style={{ fontSize: '0.62rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--muted)' }}>QTY</span>
+        <span style={{ fontSize: '0.8rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--muted)' }}>Name</span>
+        <span style={{ fontSize: '0.8rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--muted)' }}>Units</span>
+        <span style={{ fontSize: '0.8rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--muted)' }}>QTY</span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {Array.from({ length: count }).map((_, i) => (

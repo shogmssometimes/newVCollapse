@@ -15,11 +15,16 @@ export function StatCard({
   value,
   onIncr,
   onDecr,
+  modifier = 0,
 }: {
   label: string;
   value: number;
   onIncr: () => void;
   onDecr: () => void;
+  /** A Collapse Table ± adjustment already baked into `value` — shown as a
+   * "(+N)"/"(−N)" suffix next to the value so the player can see how much
+   * of it came from a permanent Collapse result. */
+  modifier?: number;
 }) {
   // WT previously had tap raise / long-press lower, then briefly had tap
   // lower / long-press raise — both let a single stray tap change the
@@ -148,6 +153,11 @@ export function StatCard({
       <span className="core-label">{label}</span>
       <div className="core-controls">
         <span className="core-value">{value}</span>
+        {modifier !== 0 && (
+          <span className="core-value-modifier">
+            ({modifier > 0 ? "+" : "−"}{Math.abs(modifier)})
+          </span>
+        )}
       </div>
     </div>
   );

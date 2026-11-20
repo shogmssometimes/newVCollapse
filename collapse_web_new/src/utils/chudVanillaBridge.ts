@@ -4,8 +4,8 @@
 // "storage" event, since same-tab writes don't fire one automatically) keeps
 // the HUD in sync immediately rather than only on next load/cross-tab event.
 
-import type { CoreStats } from "../types/chud";
-import { computeDerived } from "../domain/chudStats";
+import type { CollapseModifiers, CoreStats } from "../types/chud";
+import { computeDerived, withCollapseModifiers } from "../domain/chudStats";
 import { clampCore } from "../domain/coreApproachMap";
 import { queueHpZeroNotificationsIfNeeded } from "../domain/notifications";
 import { statusRollsKey, csmatrixKey } from "./slotKeys";
@@ -118,7 +118,8 @@ export function adjustHpCounter(delta: number, chudStateKey: string): void {
     const parsed: Record<string, unknown> = raw ? JSON.parse(raw) : {};
     const current = typeof parsed.hpCounter === "number" ? parsed.hpCounter : 0;
     const core = clampCore((parsed.core as CoreStats | undefined) ?? { vigor: 0, inference: 0, personality: 0 });
-    const hpMax = computeDerived(core).hp;
+    const modifiers = withCollapseModifiers(parsed.collapseModifiers as Partial<CollapseModifiers> | undefined);
+    const hpMax = computeDerived(core, modifiers).hp;
     const next = Math.min(hpMax, Math.max(0, current + delta));
     const hasBeenDownedBefore = parsed.hasBeenDownedBefore === true;
     const nowDowned = queueHpZeroNotificationsIfNeeded(current, next, hasBeenDownedBefore);
@@ -219,6 +220,21 @@ export function readCore(chudStateKey: string): { vigor: number; inference: numb
     const raw = window.localStorage.getItem(chudStateKey);
     const parsed: Record<string, unknown> = raw ? JSON.parse(raw) : {};
     return parsed.core as { vigor: number; inference: number; personality: number } | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Reads the current Collapse Modifiers for the given (slot-aware)
+ * `chud.state.v1` key, back-filling any missing fields to 0 — used
+ * wherever a derived stat needs to be computed outside Aag.tsx/Chud.tsx
+ * (e.g. RestWidget's Full Rest HP-to-max delta when it has no live `core`
+ * prop to read from). */
+export function readCollapseModifiers(chudStateKey: string): CollapseModifiers | undefined {
+  try {
+    const raw = window.localStorage.getItem(chudStateKey);
+    const parsed: Record<string, unknown> = raw ? JSON.parse(raw) : {};
+    return withCollapseModifiers(parsed.collapseModifiers as Partial<CollapseModifiers> | undefined);
   } catch {
     return undefined;
   }

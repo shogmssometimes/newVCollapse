@@ -332,6 +332,13 @@ body::-webkit-scrollbar {
   font-variant-numeric: tabular-nums;
 }
 
+.core-value-modifier {
+  font-size: 0.65rem;
+  color: rgba(248, 250, 252, 0.6);
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Derived stat chips ──────────────────────────────────────────────────── */
 
 .stat-row {
@@ -1806,6 +1813,12 @@ body::after {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: rgba(248, 250, 252, 0.65);
+}
+
+.approach-margin-attacker-total {
+  font-size: 0.8rem;
+  color: rgba(248, 250, 252, 0.75);
+  text-align: center;
 }
 
 .approach-margin-field,

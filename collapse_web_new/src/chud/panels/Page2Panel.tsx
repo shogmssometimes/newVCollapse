@@ -3,11 +3,12 @@ import { StatCard } from "../components/StatCard";
 import { CoreStatCard } from "../components/CoreStatCard";
 import { ApproachDistributionPopout } from "../components/ApproachDistributionPopout";
 import { ApproachDieSizeControl } from "../components/ApproachDieSizeControl";
-import type { ApproachStats, CoreStats } from "../../types/chud";
+import type { ApproachStats, CollapseModifiers, CoreStats } from "../../types/chud";
 import type { DieSides } from "../../domain/approachDice";
 import { rollFlatDice } from "../../domain/approachDice";
 import { createLongPressHandlers } from "../../utils/createLongPressHandlers";
 import { CORE_APPROACH_MAP, APPROACH_LABELS, CORE_LABELS } from "../../domain/coreApproachMap";
+import { DEFAULT_COLLAPSE_MODIFIERS, formatStatWithModifier } from "../../domain/chudStats";
 
 // Matches ApproachDie.tsx's Method-roll tumble animation timing exactly, so
 // the Readiness roll "feels" like the same dice engine rather than a
@@ -42,6 +43,7 @@ export function Page2Panel({
   onDamageDieSizeIncrease,
   onDamageDieSizeReset,
   restWidget,
+  collapseModifiers = DEFAULT_COLLAPSE_MODIFIERS,
 }: {
   onOpenMgr: () => void;
   readyness: number;
@@ -61,6 +63,9 @@ export function Page2Panel({
   onDamageDieSizeIncrease: () => DieSides;
   onDamageDieSizeReset: () => DieSides;
   restWidget?: ReactNode;
+  /** Permanent Collapse Table ± adjustments, shown as "(±N)" badges next
+   * to the stats they affect (WT, Capacity, Inventory Slots). */
+  collapseModifiers?: CollapseModifiers;
 }) {
   const [openDistribution, setOpenDistribution] = useState<keyof CoreStats | null>(null);
   const [readinessRolling, setReadinessRolling] = useState(false);
@@ -158,7 +163,7 @@ export function Page2Panel({
         >
           <span>READINESS</span>
           <strong style={isOverEncumbered ? { color: 'rgba(255,100,100,0.95)', fontStyle: 'italic' } : undefined}>
-            {isOverEncumbered ? 'Last' : readyness}
+            {isOverEncumbered ? 'Last' : formatStatWithModifier(readyness, collapseModifiers.readiness)}
           </strong>
         </div>
         <button className="topbar-square-btn" onClick={onOpenMgr}>
@@ -206,7 +211,7 @@ export function Page2Panel({
 
       {/* Row 2: WT | Damage die */}
       <div className="row-wt-dmg">
-        <StatCard label="WT" value={wt} onIncr={onWtIncr} onDecr={onWtDecr} />
+        <StatCard label="WT" value={wt} onIncr={onWtIncr} onDecr={onWtDecr} modifier={collapseModifiers.wt} />
         <ApproachDieSizeControl
           die={damageDieSize}
           onIncrease={onDamageDieSizeIncrease}
@@ -220,11 +225,11 @@ export function Page2Panel({
       <div className="core-grid row-compact-3">
         <div className="chip">
           <span>Capacity</span>
-          <strong>{capacity}</strong>
+          <strong>{formatStatWithModifier(capacity, collapseModifiers.capacity)}</strong>
         </div>
         <div className="chip">
           <span>Inv Slots</span>
-          <strong>{inventorySlots}</strong>
+          <strong>{formatStatWithModifier(inventorySlots, collapseModifiers.inventorySlots)}</strong>
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { computeDerived } from "../domain/chudStats";
+import { computeDerived, withCollapseModifiers } from "../domain/chudStats";
 import { loadState } from "../utils/chudPersistence";
 import { engramCatalog } from "../data/handbook/engramCatalog";
 import {
@@ -31,13 +31,17 @@ export default function EngramManager({
 }) {
   const [state, setState] = useState<EngramManagerState>(() => readEngramState(storageKey));
   const [core, setCore] = useState(() => loadState(chudStateStorageKey)?.core ?? ZERO_CORE);
+  const [collapseModifiers, setCollapseModifiers] = useState(() =>
+    withCollapseModifiers(loadState(chudStateStorageKey)?.collapseModifiers)
+  );
 
   useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.key === storageKey) setState(readEngramState(storageKey));
       if (e.key === chudStateStorageKey) {
-        const saved = loadState(chudStateStorageKey)?.core;
-        if (saved) setCore(saved);
+        const saved = loadState(chudStateStorageKey);
+        if (saved?.core) setCore(saved.core);
+        if (saved?.collapseModifiers) setCollapseModifiers(withCollapseModifiers(saved.collapseModifiers));
       }
     };
     window.addEventListener("storage", handler);
@@ -46,7 +50,7 @@ export default function EngramManager({
 
   const refresh = useCallback(() => setState(readEngramState(storageKey)), [storageKey]);
 
-  const capacity = computeDerived(core).capacity;
+  const capacity = computeDerived(core, collapseModifiers).capacity;
   const capacityUsed = useMemo(
     () =>
       Object.entries(state.equipped).reduce((sum, [id, e]) => {

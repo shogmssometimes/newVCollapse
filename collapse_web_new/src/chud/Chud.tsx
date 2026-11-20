@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import "./chud.css";
-import type { ApproachStats, CollapsePath, CoreStats, GearSlotEntry, SaveState } from "../types/chud";
+import type { ApproachStats, CollapseModifiers, CollapsePath, CoreStats, GearSlotEntry, SaveState } from "../types/chud";
 import {
   DEFAULT_HP_COUNTER,
   DEFAULT_APPROACH,
   computeDerived,
   computeInventorySlots,
   computeGanbareCharges,
+  computeMethodRating,
+  withCollapseModifiers,
 } from "../domain/chudStats";
 import {
   isDieSides,
@@ -106,10 +108,17 @@ export default function Chud() {
   );
 
   const [shortRest, setShortRest] = useState<boolean>(saved?.shortRest ?? false);
+  // Collapse Modifiers are owned/edited by the AAG page — this is a
+  // read-only echo kept in sync via the storage listener below, same
+  // pattern as `core`/`approach`, so every derived stat computed in this
+  // component reflects the same permanent Collapse Table adjustments.
+  const [collapseModifiers, setCollapseModifiers] = useState<CollapseModifiers>(() =>
+    withCollapseModifiers(saved?.collapseModifiers)
+  );
 
-  const derived = computeDerived(core);
+  const derived = computeDerived(core, collapseModifiers);
   const hpMax = derived.hp;
-  const inventorySlots = computeInventorySlots(core);
+  const inventorySlots = computeInventorySlots(core, collapseModifiers);
 
   const [notifications, setNotifications] = useState<PendingNotification[]>(() =>
     typeof window !== "undefined" ? listNotifications() : []
@@ -151,7 +160,7 @@ export default function Chud() {
   // the setState updater itself (always fresh, even across repeated
   // synchronous updates) fixes that.
   const overloadApproachDie = useCallback((field: keyof ApproachStats, baseCount: number, wardrobeCount: number): boolean => {
-    const baseRating = approach[field];
+    const baseRating = computeMethodRating(approach[field], field, collapseModifiers);
     const wardrobeBonus = approachWardrobeBonus[field] ?? 0;
     let fullySpent = true;
     if (baseCount > 0) {
@@ -179,7 +188,7 @@ export default function Chud() {
       });
     }
     return fullySpent;
-  }, [approach, approachWardrobeBonus]);
+  }, [approach, approachWardrobeBonus, collapseModifiers]);
 
 
   // "Receive Ganbare!" — a friend spends one of *their* Ganbare! Charges to
@@ -207,7 +216,7 @@ export default function Chud() {
     setGanbareGlassBrokenAt(Date.now());
   }, [approachOverloadSpent, approachWardrobeOverloadSpent]);
 
-  const ganbareMax = computeGanbareCharges(core);
+  const ganbareMax = computeGanbareCharges(core, collapseModifiers);
   const ganbareRemaining = Math.max(0, ganbareMax - ganbareSpent);
   // Giving Ganbare! is a Free Action: spend 1 Charge, no roll (see the
   // handbook's Ganbare! section). Clamped so a lowered Personality
@@ -271,6 +280,7 @@ export default function Chud() {
         if (typeof s.shortRest === "boolean") setShortRest(s.shortRest);
         if (typeof s.hasBeenDownedBefore === "boolean") setHasBeenDownedBefore(s.hasBeenDownedBefore);
         if (s.collapsePath) setCollapsePathState(s.collapsePath);
+        if (s.collapseModifiers) setCollapseModifiers(withCollapseModifiers(s.collapseModifiers));
       } catch {
         // malformed storage — ignore
       }
@@ -444,6 +454,7 @@ export default function Chud() {
                 stagedEngram={stagedEngram}
                 onConsumeStagedEngram={onConsumeStagedEngram}
                 onRefundEngram={onRefundEngram}
+                collapseModifiers={collapseModifiers}
               />
             }
           />

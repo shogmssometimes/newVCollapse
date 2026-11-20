@@ -23,6 +23,36 @@ export interface SecondaryStats {
 
 export type CollapsePath = "live" | "survive" | "die";
 
+// Permanent player-set ± values from Collapse Table results — one place to
+// record every lasting Collapse outcome instead of hand-adjusting a stat
+// and forgetting why. Every derived stat is "handbook formula + this
+// modifier" (see domain/chudStats.ts), then floored per the handbook's own
+// rules (Max HP/WT never below 1; everything else never below 0).
+export interface CollapseModifiers {
+  maxHp: number;
+  readiness: number;
+  inventorySlots: number;
+  capacity: number;
+  ganbareCharges: number;
+  wt: number;
+  /** Per-Method flat modifier (added to that Method's Core-distributed
+   * rating before Wardrobe bonus dice, same pool). */
+  methodDice: Partial<Record<keyof ApproachStats, number>>;
+  /** Applied only to a Total sent to Margin (Attack or Defense) — not
+   * shown until a Margin roll is actually started. */
+  totalAttackDefense: number;
+  /** Applied automatically to every rolled Total, shown in its breakdown. */
+  totalAll: number;
+}
+
+// A named Collapse Table result with no number to adjust (e.g. "lose an
+// eye") — just a free-text note the player can add/remove.
+export interface CollapseResultEntry {
+  id: string;
+  name: string;
+  text: string;
+}
+
 export interface SaveState {
   core: CoreStats;
   hpCounter: number;
@@ -53,6 +83,12 @@ export interface SaveState {
   /** Ganbare! Charges spent (max = Personality, see computeGanbareCharges).
    * Restored to 0 by a Full Rest. Charges do not use Capacity. */
   ganbareSpent?: number;
+  /** Permanent Collapse Table ± adjustments, owned/edited by the AAG page's
+   * Collapse Modifiers section. Missing/partial fields default to 0 (see
+   * withCollapseModifiers in domain/chudStats.ts). */
+  collapseModifiers?: Partial<CollapseModifiers>;
+  /** Free-text Collapse Table results with no number to change. */
+  collapseResults?: CollapseResultEntry[];
 }
 
 export type GearSlotEntry = { name: string; units: string; qty: string };

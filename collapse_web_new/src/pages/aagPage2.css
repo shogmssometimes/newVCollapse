@@ -752,3 +752,141 @@
   from { opacity: 0; transform: translate(-50%, -50%) scale(0.92); }
   to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
+
+/* ── Collapse Modifiers panel — permanent Collapse Table ± adjustments.
+   Mirrors the Rest widget's spacing/placement at the bottom of the AAG
+   page, below the Core Stats section. ─────────────────────────────────── */
+.aag-page2 .collapse-modifiers-panel {
+  margin-top: 6px;
+}
+
+.aag-page2 .collapse-mod-subhead {
+  font-size: 0.68rem;
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(248, 250, 252, 0.45);
+  margin-top: 10px;
+}
+
+.aag-page2 .collapse-mod-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.aag-page2 .collapse-mod-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.aag-page2 .collapse-mod-field span {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(248, 250, 252, 0.55);
+}
+
+.aag-page2 .collapse-mod-field input {
+  font-size: 16px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.25);
+  color: #f8fafc;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.aag-page2 .collapse-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.aag-page2 .collapse-result-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.aag-page2 .collapse-result-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.aag-page2 .collapse-result-text strong {
+  font-size: 0.8rem;
+  color: #f8fafc;
+}
+
+.aag-page2 .collapse-result-text span {
+  font-size: 0.75rem;
+  color: rgba(248, 250, 252, 0.6);
+  word-break: break-word;
+}
+
+.aag-page2 .collapse-result-remove {
+  flex-shrink: 0;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 100, 100, 0.4);
+  background: rgba(255, 100, 100, 0.08);
+  color: rgba(255, 150, 150, 0.9);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.aag-page2 .collapse-result-add {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+}
+
+.aag-page2 .collapse-result-add input {
+  font-size: 16px;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.25);
+  color: #f8fafc;
+  box-sizing: border-box;
+}
+
+.aag-page2 .collapse-result-add button {
+  min-height: 32px;
+  border-radius: 6px;
+  border: 1px solid rgba(111, 165, 255, 0.4);
+  background: rgba(111, 165, 255, 0.1);
+  color: #8fb4ff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.aag-page2 .collapse-result-add button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

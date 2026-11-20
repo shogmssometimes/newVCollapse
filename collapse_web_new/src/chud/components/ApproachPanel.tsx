@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApproachDie, type ApproachDieRollResult } from "./ApproachDie";
-import type { ApproachStats, CoreStats } from "../../types/chud";
+import type { ApproachStats, CollapseModifiers, CoreStats } from "../../types/chud";
 import type { DieSides } from "../../domain/approachDice";
 import { APPROACH_LABELS, CORE_APPROACH_MAP, CORE_LABELS } from "../../domain/coreApproachMap";
-import { computeFumbleNumber } from "../../domain/chudStats";
+import { computeFumbleNumber, computeMethodRating, DEFAULT_COLLAPSE_MODIFIERS } from "../../domain/chudStats";
 import { hideUnusedMethodsKey } from "../../utils/slotKeys";
 
 // ApproachPanel only ever renders inside the CHUD iframe, whose own URL
@@ -142,6 +142,7 @@ export function ApproachPanel({
   stagedEngram,
   onConsumeStagedEngram,
   onRefundEngram,
+  collapseModifiers = DEFAULT_COLLAPSE_MODIFIERS,
 }: {
   core: CoreStats;
   approach: ApproachStats;
@@ -163,6 +164,9 @@ export function ApproachPanel({
   onConsumeStagedEngram: () => void;
   /** Refunds an already-activated Engram Stack's charges back to the Q — used when swapping Stacks. */
   onRefundEngram: (engramId: string, amount: number) => void;
+  /** Permanent Collapse Table ± adjustments — each Method's dice pool and
+   * the roller's automatic/Margin Total bonuses all read from this. */
+  collapseModifiers?: CollapseModifiers;
 }) {
   const coreGroups = useMemo<Array<keyof CoreStats>>(() => ["vigor", "inference", "personality"], []);
   const fumbleNumber = useMemo(() => computeFumbleNumber(core), [core]);
@@ -245,7 +249,7 @@ export function ApproachPanel({
           const [a, b] = CORE_APPROACH_MAP[coreField];
           const fields = [a, b].filter((field) => {
             if (!hideUnused) return true;
-            const totalDice = approach[field] + (approachWardrobeBonus[field] ?? 0);
+            const totalDice = computeMethodRating(approach[field], field, collapseModifiers) + (approachWardrobeBonus[field] ?? 0);
             return totalDice > 0;
           });
           if (fields.length === 0) return null;
@@ -258,7 +262,7 @@ export function ApproachPanel({
                 </span>
               </div>
               {fields.map((field) => {
-                const baseRating = approach[field];
+                const baseRating = computeMethodRating(approach[field], field, collapseModifiers);
                 const wardrobeBonus = approachWardrobeBonus[field] ?? 0;
                 const spent = approachOverloadSpent[field] ?? 0;
                 const available = Math.max(0, baseRating - Math.min(Math.max(spent, 0), baseRating));
@@ -280,6 +284,8 @@ export function ApproachPanel({
                     stagedEngram={stagedEngram}
                     onConsumeStagedEngram={onConsumeStagedEngram}
                     onRefundEngram={onRefundEngram}
+                    totalAllModifier={collapseModifiers.totalAll}
+                    totalAttackDefenseModifier={collapseModifiers.totalAttackDefense}
                   />
                 );
               })}

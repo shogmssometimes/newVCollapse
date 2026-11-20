@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ApproachStats, CoreStats } from "../types/chud";
+import type { ApproachStats, CollapseModifiers, CollapseResultEntry, CoreStats } from "../types/chud";
 import {
   DEFAULT_APPROACH,
-  DEFAULT_WT,
   computeDerived,
   computeFumbleNumber,
   computeInventorySlots,
   computeSkillCount,
+  computeWtBase,
+  withCollapseModifiers,
 } from "../domain/chudStats";
 import { isDieSides, stepUp, type DieSides } from "../domain/approachDice";
 import { clampApproachToCore, clampCore, STAT_AND_METHOD_MAX } from "../domain/coreApproachMap";
 import { loadState, readGearData } from "../utils/chudPersistence";
 import { Page2Panel } from "../chud/panels/Page2Panel";
+import { CollapseModifiersPanel } from "../chud/panels/CollapseModifiersPanel";
 import { RestWidget } from "../chud/components/RestWidget";
 import "./aagPage2.css";
 
@@ -37,12 +39,33 @@ export default function AagPage({
   const [damageDieSize, setDamageDieSize] = useState<DieSides>(
     isDieSides(saved?.damageDieSize) ? saved.damageDieSize : DEFAULT_DAMAGE_DIE_SIZE
   );
-  const [wt, setWtRaw] = useState<number>(saved?.wt ?? DEFAULT_WT);
+  const [collapseModifiers, setCollapseModifiers] = useState<CollapseModifiers>(() =>
+    withCollapseModifiers(saved?.collapseModifiers)
+  );
+  const [collapseResults, setCollapseResults] = useState<CollapseResultEntry[]>(saved?.collapseResults ?? []);
+  // WT is the one stat that's "base + modifier, plus temporary changes on
+  // top" (handbook statuses like Exposed) rather than a pure derived value
+  // — `wt` is the actual displayed/stored number (as it always has been;
+  // the WT StatCard's tap/hold gestures still edit this directly), while
+  // the Collapse Modifiers panel only shifts the *base* a status sits on
+  // top of. Changing the modifier re-bases `wt` by the same delta so the
+  // temporary offset already applied survives untouched.
+  const [wt, setWtRaw] = useState<number>(saved?.wt ?? computeWtBase(withCollapseModifiers(saved?.collapseModifiers)));
   const [gearSlotsUsed, setGearSlotsUsed] = useState<number>(() =>
     typeof window !== "undefined" ? (readGearData(gearSlotsStorageKey)?.slotsUsed ?? 0) : 0
   );
 
-  const setWt = useCallback((v: number) => setWtRaw(Math.max(0, v)), []);
+  const setWt = useCallback((v: number) => setWtRaw(Math.max(1, v)), []);
+  const setCollapseModifiersField = useCallback((next: CollapseModifiers) => {
+    setCollapseModifiers((prev) => {
+      if (next.wt !== prev.wt) {
+        const delta = next.wt - prev.wt;
+        setWtRaw((w) => Math.max(1, w + delta));
+      }
+      return next;
+    });
+  }, []);
+
 
   // A Core stat's value is the total pool its two linked Approaches draw
   // from (see CORE_APPROACH_MAP). If the Core stat is lowered below what's
@@ -76,8 +99,8 @@ export default function AagPage({
     return DEFAULT_DAMAGE_DIE_SIZE;
   }, []);
 
-  const derived = computeDerived(core);
-  const inventorySlots = computeInventorySlots(core);
+  const derived = computeDerived(core, collapseModifiers);
+  const inventorySlots = computeInventorySlots(core, collapseModifiers);
   const isOverEncumbered = gearSlotsUsed > inventorySlots;
   const skillCount = computeSkillCount(core);
   const fumbleNumber = computeFumbleNumber(core);
@@ -95,13 +118,13 @@ export default function AagPage({
       delete prev.ap;
       delete prev.draw;
       delete prev.approachDieSize;
-      const merged = { ...prev, core, approach, damageDieSize, wt, inventorySlots };
+      const merged = { ...prev, core, approach, damageDieSize, wt, inventorySlots, collapseModifiers, collapseResults };
       delete merged.approachDice;
       window.localStorage.setItem(chudStateStorageKey, JSON.stringify(merged));
     } catch {
       // storage unavailable — ignore
     }
-  }, [chudStateStorageKey, core, approach, damageDieSize, wt, inventorySlots]);
+  }, [chudStateStorageKey, core, approach, damageDieSize, wt, inventorySlots, collapseModifiers, collapseResults]);
 
   // Cross-tab / cross-iframe sync for these fields.
   useEffect(() => {
@@ -112,7 +135,9 @@ export default function AagPage({
           if (s.core) setCore(clampCore(s.core));
           if (s.approach) setApproach(clampApproachToCore(s.approach, clampCore(s.core ?? core)));
           if (isDieSides(s.damageDieSize)) setDamageDieSize(s.damageDieSize);
-          if (typeof s.wt === "number") setWtRaw(Math.max(0, s.wt));
+          if (typeof s.wt === "number") setWtRaw(Math.max(1, s.wt));
+          if (s.collapseModifiers) setCollapseModifiers(withCollapseModifiers(s.collapseModifiers));
+          if (Array.isArray(s.collapseResults)) setCollapseResults(s.collapseResults);
         } catch {
           // malformed storage — ignore
         }
@@ -140,6 +165,7 @@ export default function AagPage({
           inventorySlots={inventorySlots}
           skillCount={skillCount}
           fumbleNumber={fumbleNumber}
+          collapseModifiers={collapseModifiers}
           core={core}
           onCoreChange={setCoreField}
           approach={approach}
@@ -148,8 +174,19 @@ export default function AagPage({
           onDamageDieSizeIncrease={increaseDamageDieSize}
           onDamageDieSizeReset={resetDamageDieSize}
           restWidget={
-            <RestWidget storageKey={chudStateStorageKey} deckBuilderStorageKey={deckBuilderStorageKey} core={core} />
+            <RestWidget
+              storageKey={chudStateStorageKey}
+              deckBuilderStorageKey={deckBuilderStorageKey}
+              core={core}
+              collapseModifiers={collapseModifiers}
+            />
           }
+        />
+        <CollapseModifiersPanel
+          modifiers={collapseModifiers}
+          onChange={setCollapseModifiersField}
+          results={collapseResults}
+          onResultsChange={setCollapseResults}
         />
       </div>
     </div>

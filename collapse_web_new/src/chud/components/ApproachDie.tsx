@@ -99,6 +99,8 @@ export function ApproachDie({
   stagedEngram = null,
   onConsumeStagedEngram,
   onRefundEngram,
+  totalAllModifier = 0,
+  totalAttackDefenseModifier = 0,
 }: {
   label: string
   /** Core-distributed rating alone (before Wardrobe) — the track's full/ghost count and the base Overload-spendable pool size. */
@@ -130,6 +132,12 @@ export function ApproachDie({
    * roll's already-activated Stack out for a newly-staged Engram, before
    * the Stack is locked in by Confirm/Margin. */
   onRefundEngram?: (engramId: string, amount: number) => void
+  /** Permanent Collapse Table modifier applied automatically to every
+   * Total this Method rolls, shown in the Total line's breakdown. */
+  totalAllModifier?: number
+  /** Permanent Collapse Table modifier applied only once a Total is sent
+   * to Margin (Attack or Defense) — not part of the initial Total line. */
+  totalAttackDefenseModifier?: number
 }) {
   const wardrobeAvail = wardrobeAvailable ?? wardrobeBonus
   const [errorFlash, setErrorFlash] = useState(false)
@@ -467,7 +475,12 @@ export function ApproachDie({
   const overloadedIndex = pendingOverload.size > 0 ? Array.from(pendingOverload)[0] : null
   const overloadedBaseValue = overloadedIndex !== null && result ? result.dice[overloadedIndex].total : null
   const engramBonusTotal = engramStack ? engramStack.rolls.reduce((a, b) => a + b, 0) : 0
-  const displayTotal = dieMax + engramBonusTotal
+  // The Collapse "every roll" Total modifier (if any) is applied
+  // automatically to every rolled Total — see the breakdown rendered
+  // alongside "Total:" below. The Attack/Defense modifier is NOT part of
+  // this — it only applies once this Total is sent to Margin (see
+  // startMargin), since it only means something against an opposition.
+  const displayTotal = dieMax + engramBonusTotal + totalAllModifier
   // Picking up a die previews doubling it, but only once confirmed with a
   // long-press (a plain tap would be too easy to trigger by accident while
   // reading the result) — it's then auto-resolved (spent from its own
@@ -646,7 +659,7 @@ export function ApproachDie({
       flingTimer.current = window.setTimeout(() => { sendToSet(displayTotal); setDieFling(null) }, FLING_DURATION_MS)
     } else {
       setDieFling({ index, dir: "right" }) // swipe right: Create Margin
-      flingTimer.current = window.setTimeout(() => { startMargin(displayTotal); setDieFling(null) }, FLING_DURATION_MS)
+      flingTimer.current = window.setTimeout(() => { startMargin(displayTotal + totalAttackDefenseModifier); setDieFling(null) }, FLING_DURATION_MS)
     }
   }
 
@@ -1006,13 +1019,14 @@ export function ApproachDie({
                   aria-hidden="true"
                 />
                 Total: {displayTotal}{" "}
-                {(engramBonusTotal > 0 || overloadedIndex !== null) && (
+                {(engramBonusTotal > 0 || overloadedIndex !== null || totalAllModifier !== 0) && (
                   <span className="approach-die-popup-total-sub">
                     (
                     {overloadedIndex !== null && overloadedBaseValue !== null
                       ? `${overloadedBaseValue} doubled to ${overloadedBaseValue * 2}`
                       : `${dieMax} die`}
-                    {engramBonusTotal > 0 ? ` + ${engramBonusTotal} Engram` : ""})
+                    {engramBonusTotal > 0 ? ` + ${engramBonusTotal} Engram` : ""}
+                    {totalAllModifier !== 0 ? ` ${totalAllModifier > 0 ? "+" : "−"} ${Math.abs(totalAllModifier)} Collapse` : ""})
                   </span>
                 )}
               </div>
@@ -1025,6 +1039,11 @@ export function ApproachDie({
 
           {view === "margin-input" && (
             <div className="approach-margin-input">
+              {totalAttackDefenseModifier !== 0 && (
+                <div className="approach-margin-attacker-total">
+                  Attacker Total: {marginBase} ({displayTotal} {totalAttackDefenseModifier > 0 ? "+" : "−"} {Math.abs(totalAttackDefenseModifier)} Collapse)
+                </div>
+              )}
               <label className="approach-margin-label" htmlFor={`opposition-${label}`}>
                 Opposition Roll
               </label>

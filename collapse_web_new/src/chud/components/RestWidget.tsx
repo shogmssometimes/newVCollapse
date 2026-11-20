@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import type { CoreStats } from "../../types/chud";
-import { computeDerived } from "../../domain/chudStats";
+import type { CollapseModifiers, CoreStats } from "../../types/chud";
+import { computeDerived, DEFAULT_COLLAPSE_MODIFIERS } from "../../domain/chudStats";
 
 // Matches Chud.tsx's real pre-save default (an unset character has no Core
 // points yet) — falling back to DEFAULT_CORE's 3/2/2 here disagreed with
@@ -15,6 +15,7 @@ import {
   readGlobalMeters,
   readHpCounter,
   readCore,
+  readCollapseModifiers,
   maxGritForCollapse,
 } from "../../utils/chudVanillaBridge";
 
@@ -29,10 +30,12 @@ export function RestWidget({
   storageKey,
   deckBuilderStorageKey,
   core,
+  collapseModifiers,
 }: {
   storageKey: string;
   deckBuilderStorageKey: string;
   core?: CoreStats;
+  collapseModifiers?: CollapseModifiers;
 }) {
   const [digDeepPending, setDigDeepPending] = useState<boolean>(() =>
     typeof window !== "undefined" ? hasPendingNotification("dig-deep") : false
@@ -83,7 +86,8 @@ export function RestWidget({
     const targetGrit = Math.min(maxGrit, roll);
     const gritDelta = targetGrit - currentGrit;
     const activeCore = core ?? readCore(storageKey) ?? ZERO_CORE;
-    const hpMax = computeDerived(activeCore).hp;
+    const activeModifiers = collapseModifiers ?? readCollapseModifiers(storageKey) ?? DEFAULT_COLLAPSE_MODIFIERS;
+    const hpMax = computeDerived(activeCore, activeModifiers).hp;
     const hpDelta = hpMax - readHpCounter(storageKey);
     const capNote = roll > maxGrit ? ` (max Grit is ${maxGrit} with current Collapse)` : "";
     const created = pushNotification(
@@ -94,7 +98,7 @@ export function RestWidget({
       { roll: { die: 6, value: roll } }
     );
     if (created) setFullRestPending(true);
-  }, [core, storageKey]);
+  }, [core, storageKey, collapseModifiers]);
 
   return (
     <div className="mods rest-widget">

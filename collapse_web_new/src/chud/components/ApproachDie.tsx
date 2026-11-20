@@ -176,6 +176,12 @@ export function ApproachDie({
   // replaces it; once Confirmed/Margin'd (resolvedRef), the Stack is
   // locked and can no longer be swapped or cleared.
   const [engramStack, setEngramStack] = useState<{ id: string; name: string; rolls: number[] } | null>(null)
+  // Caches each Engram's rolled dice for the lifetime of the CURRENT roll
+  // (cleared on every fresh rollPool — see below) so swapping away and
+  // back to the same Engram before Confirming reuses its first rolled
+  // values instead of rolling again — "no free rerolls" applies per-Engram
+  // across swaps, not just to the Method dice themselves.
+  const engramRollCacheRef = useRef<Record<string, number[]>>({})
   // Hold progress (0-100) for the Total line's long-press-to-Confirm
   // gesture — replaces the old die-swipe-left Confirm, which was
   // unreliable. Confirms everything at once: any pending Overload AND
@@ -314,6 +320,7 @@ export function ApproachDie({
     setPopupVisible(true)
     setPendingOverload(new Set())
     setEngramStack(null)
+    engramRollCacheRef.current = {}
     setConfirmHoldProgress(0)
     setResolved(false)
     setView("result")
@@ -513,7 +520,12 @@ export function ApproachDie({
     if (engramStack && onRefundEngram) {
       onRefundEngram(engramStack.id, engramStack.rolls.length)
     }
-    const rolls = rollFlatDice(stagedEngram.charges, 4)
+    // Reuse this Engram's cached rolls if it was already activated earlier
+    // in this same roll (then swapped away) — only roll fresh the first
+    // time an Engram is activated per roll.
+    const cached = engramRollCacheRef.current[stagedEngram.id]
+    const rolls = cached ?? rollFlatDice(stagedEngram.charges, 4)
+    engramRollCacheRef.current[stagedEngram.id] = rolls
     setEngramStack({ id: stagedEngram.id, name: stagedEngram.name, rolls })
     onConsumeStagedEngram?.()
   }

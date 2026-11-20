@@ -23,7 +23,8 @@ import {
 // automatically.
 //   - Full Rest: Grit restored by rolling 1d6, capped so Grit cannot exceed
 //     (6 − current Collapse); HP to max; Overload dice (Method dice) fully
-//     reset; all Engram charges refilled.
+//     reset; all Engram charges refilled; all Ganbare! Charges refilled
+//     (handbook v12 p42: "A Full Rest restores all of them.").
 export function RestWidget({
   storageKey,
   deckBuilderStorageKey,
@@ -74,7 +75,8 @@ export function RestWidget({
   const onFullRest = useCallback(() => {
     if (hasPendingNotification("full-rest")) return;
     // Grit restores by rolling 1d6, capped so Grit cannot exceed (6 − current
-    // Collapse) — Full Rest does not restore Ganbare! Charges.
+    // Collapse) — Full Rest also refills Ganbare! Charges (handbook v12
+    // p42) alongside HP, Engram charges, and Method dice.
     const roll = 1 + Math.floor(Math.random() * 6);
     const { grit: currentGrit, collapse } = readGlobalMeters();
     const maxGrit = maxGritForCollapse(collapse);
@@ -87,7 +89,7 @@ export function RestWidget({
     const created = pushNotification(
       "full-rest",
       "Full Rest",
-      `Rolled ${roll} for Grit${capNote}. Accept to set Grit to ${targetGrit}, restore HP to full, refill all Engram charges, and reset Method dice.`,
+      `Rolled ${roll} for Grit${capNote}. Accept to set Grit to ${targetGrit}, restore HP to full, refill all Engram charges, refill all Ganbare! Charges, and reset Method dice.`,
       { grit: gritDelta, hp: hpDelta, restoreOverload: true, fullEngramRestore: true },
       { roll: { die: 6, value: roll } }
     );

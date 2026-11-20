@@ -299,7 +299,9 @@ const CharMgmt: React.FC = () => {
                   borderRadius: 4,
                   padding: '0.4rem 0.65rem',
                   color: 'inherit',
-                  fontSize: '1rem',
+                  // Explicit 16px (not 1rem, which resolves to this page's
+                  // 14px root) — below 16px, iPhones zoom the page on tap.
+                  fontSize: '16px',
                   width: '100%',
                   boxSizing: 'border-box',
                 }}

@@ -135,7 +135,7 @@ export function GearBriefWidget({
       >
         <span
           style={{
-            fontSize: "0.58rem",
+            fontSize: "0.8rem",
             letterSpacing: "0.16em",
             textTransform: "uppercase",
             color: "var(--muted, #9aa0a6)",
@@ -202,7 +202,7 @@ export function GearBriefWidget({
     >
       <span
         style={{
-          fontSize: '0.58rem',
+          fontSize: '0.8rem',
           letterSpacing: '0.16em',
           textTransform: 'uppercase',
           color: isOverEncumbered ? 'rgba(255,100,100,0.9)' : 'var(--muted, #9aa0a6)',
@@ -257,7 +257,7 @@ export function GearBriefWidget({
       >
         <span
           style={{
-            fontSize: '0.6rem',
+            fontSize: '0.8rem',
             color: 'rgba(255,255,255,0.35)',
             fontVariantNumeric: 'tabular-nums',
           }}

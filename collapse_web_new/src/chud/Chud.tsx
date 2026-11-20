@@ -19,7 +19,7 @@ import { clampApproachToCore, clampCore } from "../domain/coreApproachMap";
 import { computeWardrobeBonuses } from "../domain/wardrobeBonus";
 import { loadState, readGearData, readWardrobeData } from "../utils/chudPersistence";
 import { wardrobeKey, deckBuilderKey } from "../utils/slotKeys";
-import { adjustGlobalMeters, resetApproachOverload, setVanillaBridgeSlot } from "../utils/chudVanillaBridge";
+import { adjustGlobalMeters, resetApproachOverload, resetGanbareCharges, setVanillaBridgeSlot } from "../utils/chudVanillaBridge";
 import { fullRestEngrams, readEngramState, refundEngramCharges, type EngramManagerState } from "../utils/engramState";
 import {
   getNotificationsStorageKey,
@@ -362,10 +362,12 @@ export default function Chud() {
           adjustGlobalMeters({ grit: n.effect.grit, collapse: n.effect.collapse });
         }
         if (n.effect.restoreOverload) {
-          // Full Rest restores spent Overload dice, but — despite the
-          // notification message implying otherwise — never refills
-          // Ganbare! Charges; only spending/receiving Ganbare! does that.
+          // Full Rest restores spent Overload dice AND refills Ganbare!
+          // Charges (handbook v12 p42: "A Full Rest restores all of
+          // them.") — only Full Rest does the latter; spending/receiving
+          // Ganbare! during play never touches Overload.
           resetApproachOverload(STORAGE_KEY);
+          resetGanbareCharges(STORAGE_KEY);
         }
         if (n.effect.fullEngramRestore) fullRestEngrams(DECK_BUILDER_KEY);
         if (n.kind === "hp-zero") {

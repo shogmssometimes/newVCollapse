@@ -957,6 +957,10 @@ export default function GearPage({
                 border: '1px solid var(--border)',
                 borderRadius: 20,
                 padding: '4px 12px',
+                // 32px minimum tap target (was ~21px tall).
+                minHeight: 32,
+                display: 'flex',
+                alignItems: 'center',
                 fontSize: '0.75rem',
                 cursor: 'pointer',
                 letterSpacing: '0.06em',
@@ -979,6 +983,10 @@ export default function GearPage({
                 border: `1px solid ${RARITY_COLORS[r]}`,
                 borderRadius: 20,
                 padding: '4px 12px',
+                // 32px minimum tap target (was ~21px tall).
+                minHeight: 32,
+                display: 'flex',
+                alignItems: 'center',
                 fontSize: '0.72rem',
                 cursor: 'pointer',
                 letterSpacing: '0.1em',

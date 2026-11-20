@@ -20,7 +20,7 @@ export function SecondaryStatsPanel({
 }) {
   return (
     <div className="mods">
-      <div style={{ fontSize: '0.6rem', letterSpacing: '0.16em', textTransform: 'uppercase', color: 'rgba(248,250,252,0.35)', paddingBottom: 4, paddingTop: 6, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>XP &amp; Levels</div>
+      <div style={{ fontSize: '0.8rem', letterSpacing: '0.16em', textTransform: 'uppercase', color: 'rgba(248,250,252,0.35)', paddingBottom: 4, paddingTop: 6, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>XP &amp; Levels</div>
       <div className="core-grid secondary-grid">
         {([
           ["vigor", "VIG"],

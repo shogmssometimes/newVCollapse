@@ -4,7 +4,7 @@ import { createPortal } from "react-dom"
 import type { ApproachDieResult, ApproachRollResult, DieSides } from "../../domain/approachDice"
 import { rollFlatDice, computeFumbleWounds, useSkillReroll } from "../../domain/approachDice"
 import { addSetRollRow, readGlobalMeters, spendGrit } from "../../utils/chudVanillaBridge"
-import { pushNotification } from "../../domain/notifications"
+import { pushNotification, removeNotification } from "../../domain/notifications"
 import { STAT_AND_METHOD_MAX } from "../../domain/coreApproachMap"
 import { STANDARD_LONG_PRESS_MS } from "../../utils/gestureConstants"
 import { lockScroll, unlockScroll } from "../../utils/scrollLock"
@@ -238,6 +238,16 @@ export function ApproachDie({
   // finishes playing.
   const [dieFling, setDieFling] = useState<{ index: number; dir: "up" | "down" | "left" | "right" } | null>(null)
   const flingTimer = useRef<number | null>(null)
+  // What resolveOverloadIfNeeded actually spent (base/Wardrobe die counts),
+  // so a post-Margin "Ignore Overload" (handbook p51: Grit can be spent
+  // after the roll, once the Margin is already known) can refund it —
+  // cleared once refunded, since there's nothing left to give back twice.
+  const resolvedOverloadRef = useRef<{ base: number; wardrobe: number } | null>(null)
+  // Tracks the one "Fumble!" notification this roll has queued (if any) so
+  // a Grit Menu action that recalculates the Margin (+1d10, Reroll) can
+  // replace it instead of leaving a stale notice from the pre-Grit result
+  // sitting in the queue alongside (or instead of) the new one.
+  const marginFumbleNotifIdRef = useRef<string | null>(null)
   const rollAnimTimer = useRef<number | null>(null)
   const errorFlashTimer = useRef<number | null>(null)
   const armTimer = useRef<number | null>(null)
@@ -287,6 +297,7 @@ export function ApproachDie({
         else baseCount += 1
       })
       onOverload(baseCount, wardrobeCount)
+      resolvedOverloadRef.current = { base: baseCount, wardrobe: wardrobeCount }
     }
     setResolved(true)
   }, [onOverload, pendingOverload, available, ignoreOverloadSpend])
@@ -374,6 +385,12 @@ export function ApproachDie({
     setIgnoreOverloadSpend(false)
     setGritRerollUsed(false)
     setResolved(false)
+    resolvedOverloadRef.current = null
+    // Don't remove the notification itself here — a Fumble queued by a
+    // previous roll on this same Method is still a real pending
+    // notification the player hasn't accepted yet. Just stop tracking it:
+    // it's no longer this (new) roll's to replace.
+    marginFumbleNotifIdRef.current = null
     setView("result")
     setRolling(true)
     // "Numbers rolling" visual: re-roll a throwaway D10 face per die, every
@@ -545,17 +562,71 @@ export function ApproachDie({
   // Grit Menu (handbook p40, Dice Mode only) — each button spends 1 Grit
   // through the exact same path as tapping the Grit bar (spendGrit), so
   // dropping to 0 here still queues the "Grit reached 0" notification.
+  //
+  // Recalculating the Margin (±Grit menu, after the Margin is already
+  // shown) must also re-decide the Fumble notification: pushNotification
+  // is a no-op while one of the same kind is already pending, so without
+  // first removing this roll's own earlier notice (if any), a Grit action
+  // that brings the roll OUT of a Fumble would leave the stale "take N
+  // Wounds" notification sitting there forever, and one that still misses
+  // (just by a different amount) would never update its text.
+  const applyMarginFumbleCheck = (computed: number) => {
+    if (marginFumbleNotifIdRef.current) {
+      removeNotification(marginFumbleNotifIdRef.current)
+      marginFumbleNotifIdRef.current = null
+    }
+    if (isSaveRoll) return
+    const wounds = computeFumbleWounds(computed, fumbleNumber)
+    if (wounds > 0) {
+      const miss = -computed
+      const past = miss - fumbleNumber
+      const created = pushNotification(
+        "margin-fumble",
+        "Fumble!",
+        `${label}: missed by ${miss} (Fumble Number ${fumbleNumber > 0 ? -fumbleNumber : fumbleNumber}, ${past} past) — take ${wounds} Wound${wounds === 1 ? "" : "s"}.`,
+        { hp: -wounds }
+      )
+      if (created) marginFumbleNotifIdRef.current = created.id
+    }
+  }
+
+  // Grit stays usable after the Margin is shown (handbook p51: "you may
+  // use Wing-It, Overload or Grit after your roll to bring the Margin up
+  // out of a Fumble") — only the "fully locked" views (closed/past Margin
+  // entirely, e.g. the Wound roll) shut it off; the Margin screen itself
+  // doesn't, even though resolveOverloadIfNeeded already ran to get there.
+  const gritMenuLocked = resolvedRef.current && view !== "margin-result"
   const gritAddD10 = () => {
-    if (noDiceMode || resolvedRef.current || !result || gritBonusDie !== null || grit <= 0) return
+    if (noDiceMode || gritMenuLocked || !result || gritBonusDie !== null || grit <= 0) return
     const rolled = Math.floor(Math.random() * 10) + 1
     if (!spendGrit(1)) return
     setGrit((g) => Math.max(0, g - 1))
     setGritBonusDie(rolled)
+    if (view === "margin-result" && marginBase !== null) {
+      const newBase = marginBase + rolled
+      setMarginBase(newBase)
+      const opposition = Number(oppositionInput)
+      if (Number.isFinite(opposition)) {
+        const computed = newBase - opposition
+        setMargin(computed)
+        applyMarginFumbleCheck(computed)
+      }
+    }
   }
   const gritIgnoreOverload = () => {
-    if (noDiceMode || resolvedRef.current || pendingOverload.size === 0 || ignoreOverloadSpend || grit <= 0) return
+    if (noDiceMode || gritMenuLocked || pendingOverload.size === 0 || ignoreOverloadSpend || grit <= 0) return
     if (!spendGrit(1)) return
     setGrit((g) => Math.max(0, g - 1))
+    // If the Overload was already spent (resolveOverloadIfNeeded already
+    // ran — we're on the Margin screen now), give the die back; otherwise
+    // it hasn't been spent yet and setting the flag below is enough to
+    // stop resolveOverloadIfNeeded from ever spending it.
+    if (resolvedOverloadRef.current) {
+      const { base, wardrobe } = resolvedOverloadRef.current
+      for (let i = 0; i < base; i++) onToggleOverloadPip?.("base", true)
+      for (let i = 0; i < wardrobe; i++) onToggleOverloadPip?.("wardrobe", true)
+      resolvedOverloadRef.current = null
+    }
     setIgnoreOverloadSpend(true)
   }
   const gritReroll = () => {
@@ -565,10 +636,14 @@ export function ApproachDie({
     const rerolled = onRoll(poolMax)
     setResult(rerolled)
     const newDieMax = rerolled.dice.reduce((max, d) => Math.max(max, d.total), 0)
-    const newTotal = newDieMax + engramBonusTotal + totalAllModifier + (gritBonusDie ?? 0)
+    const newTotal = newDieMax + engramBonusTotal + totalAllModifier + (gritBonusDie ?? 0) + totalAttackDefenseModifier
     setMarginBase(newTotal)
     const opposition = Number(oppositionInput)
-    if (Number.isFinite(opposition)) setMargin(newTotal - opposition)
+    if (Number.isFinite(opposition)) {
+      const computed = newTotal - opposition
+      setMargin(computed)
+      applyMarginFumbleCheck(computed)
+    }
     setGritRerollUsed(true)
   }
   const gritAddStatus = (status: "Hidden" | "Reckless") => {
@@ -808,19 +883,7 @@ export function ApproachDie({
     // roller, no matter how badly it fails. There is exactly one
     // notification for this (no separate "Apply Wound" notice) — it both
     // names the Fumble and carries the HP effect to apply.
-    if (!isSaveRoll) {
-      const wounds = computeFumbleWounds(computed, fumbleNumber)
-      if (wounds > 0) {
-        const miss = -computed
-        const past = miss - fumbleNumber
-        pushNotification(
-          "margin-fumble",
-          "Fumble!",
-          `${label}: missed by ${miss} (Fumble Number ${fumbleNumber > 0 ? -fumbleNumber : fumbleNumber}, ${past} past) — take ${wounds} Wound${wounds === 1 ? "" : "s"}.`,
-          { hp: -wounds }
-        )
-      }
-    }
+    applyMarginFumbleCheck(computed)
   }
 
   const handleRollDamage = () => {
@@ -887,18 +950,18 @@ export function ApproachDie({
       <button
         type="button"
         className="approach-die-grit-btn"
-        disabled={resolvedRef.current || gritBonusDie !== null || grit <= 0}
+        disabled={gritMenuLocked || gritBonusDie !== null || grit <= 0}
         onClick={(event) => { event.stopPropagation(); gritAddD10() }}
-        title="Spend 1 Grit: roll 1d10 and add it to the Total (once per roll)"
+        title="Spend 1 Grit: roll 1d10 and add it to the Total (once per roll) — still usable on the Margin screen"
       >
         +1d10
       </button>
       <button
         type="button"
         className="approach-die-grit-btn"
-        disabled={resolvedRef.current || pendingOverload.size === 0 || ignoreOverloadSpend || grit <= 0}
+        disabled={gritMenuLocked || pendingOverload.size === 0 || ignoreOverloadSpend || grit <= 0}
         onClick={(event) => { event.stopPropagation(); gritIgnoreOverload() }}
-        title="Spend 1 Grit: the die Overloaded this roll doesn't count as spent"
+        title="Spend 1 Grit: the die Overloaded this roll doesn't count as spent — refunds it if it was already spent"
       >
         Ignore Overload
       </button>
@@ -1248,6 +1311,11 @@ export function ApproachDie({
             <div className="approach-margin-result">
               <div className="approach-margin-value">{margin > 0 ? `+${margin}` : margin}</div>
               <div className="approach-margin-sub">Margin</div>
+              {gritRerollUsed && result && (
+                <div className="approach-margin-reroll-note">
+                  Rerolled: {result.dice.map((d) => d.total).join(" · ")} → Total {marginBase}
+                </div>
+              )}
               {margin > 0 && (
                 <button type="button" className="approach-roll-path-btn" onClick={(e) => { e.stopPropagation(); handleRollDamage() }}>
                   Roll Wounds ({margin}{dieLabel(damageDie)})

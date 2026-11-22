@@ -1977,6 +1977,12 @@ body::after {
   color: rgba(248, 250, 252, 0.55);
 }
 
+.approach-margin-reroll-note {
+  font-size: 11px;
+  color: rgba(248, 250, 252, 0.7);
+  text-align: center;
+}
+
 .approach-damage-dice {
   display: flex;
   flex-wrap: wrap;

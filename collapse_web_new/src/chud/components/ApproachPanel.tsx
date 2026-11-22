@@ -143,6 +143,8 @@ export function ApproachPanel({
   onConsumeStagedEngram,
   onRefundEngram,
   collapseModifiers = DEFAULT_COLLAPSE_MODIFIERS,
+  noDiceMode = false,
+  onToggleOverloadPip,
 }: {
   core: CoreStats;
   approach: ApproachStats;
@@ -167,6 +169,12 @@ export function ApproachPanel({
   /** Permanent Collapse Table ± adjustments — each Method's dice pool and
    * the roller's automatic/Margin Total bonuses all read from this. */
   collapseModifiers?: CollapseModifiers;
+  /** No Dice Mode: suppresses the roll gesture entirely; pips become
+   * directly tappable to toggle Overload instead (see onToggleOverloadPip). */
+  noDiceMode?: boolean;
+  /** No Dice Mode only: tapping a Method's pip reports which Method, which
+   * pool (base/Wardrobe), and whether it was spent. */
+  onToggleOverloadPip?: (field: keyof ApproachStats, origin: "base" | "wardrobe", wasSpent: boolean) => void;
 }) {
   const coreGroups = useMemo<Array<keyof CoreStats>>(() => ["vigor", "inference", "personality"], []);
   const fumbleNumber = useMemo(() => computeFumbleNumber(core), [core]);
@@ -286,6 +294,8 @@ export function ApproachPanel({
                     onRefundEngram={onRefundEngram}
                     totalAllModifier={collapseModifiers.totalAll}
                     totalAttackDefenseModifier={collapseModifiers.totalAttackDefense}
+                    noDiceMode={noDiceMode}
+                    onToggleOverloadPip={onToggleOverloadPip ? (origin, wasSpent) => onToggleOverloadPip(field, origin, wasSpent) : undefined}
                   />
                 );
               })}

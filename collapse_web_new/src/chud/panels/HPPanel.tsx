@@ -28,6 +28,7 @@ export function HPPanel({
   engramStorageKey,
   onStageForRoller,
   methods,
+  noDiceMode,
 }: {
   hpCounter: number;
   hpMax: number;
@@ -52,6 +53,7 @@ export function HPPanel({
   onStageForRoller: (id: string, name: string, charges: number) => void;
   /** The Methods (ApproachPanel) section, rendered directly below HP. */
   methods: ReactNode;
+  noDiceMode?: boolean;
 }) {
   // HP is inverted relative to every other stat card: a tap removes 1 HP
   // (the common case — taking damage), a 500ms hold adds 1 HP (healing —
@@ -155,6 +157,7 @@ export function HPPanel({
         engramState={engramState}
         engramStorageKey={engramStorageKey}
         onStageForRoller={onStageForRoller}
+        noDiceMode={noDiceMode}
       />
       {/* Grit/Collapse meter vanilla widget from meter-bridge.js mounts here,
           directly below the gear queue. */}

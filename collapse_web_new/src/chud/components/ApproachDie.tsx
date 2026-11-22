@@ -101,6 +101,8 @@ export function ApproachDie({
   onRefundEngram,
   totalAllModifier = 0,
   totalAttackDefenseModifier = 0,
+  noDiceMode = false,
+  onToggleOverloadPip,
 }: {
   label: string
   /** Core-distributed rating alone (before Wardrobe) — the track's full/ghost count and the base Overload-spendable pool size. */
@@ -138,6 +140,13 @@ export function ApproachDie({
   /** Permanent Collapse Table modifier applied only once a Total is sent
    * to Margin (Attack or Defense) — not part of the initial Total line. */
   totalAttackDefenseModifier?: number
+  /** No Dice Mode: the app is just the character sheet — no roll popup.
+   * Tapping the name box does nothing; tapping a pip directly toggles it
+   * spent/unspent instead (see onToggleOverloadPip). */
+  noDiceMode?: boolean
+  /** No Dice Mode only: tapping a pip reports its origin and whether it
+   * was spent (so the parent flips exactly 1 die the other way). */
+  onToggleOverloadPip?: (origin: "base" | "wardrobe", wasSpent: boolean) => void
 }) {
   const wardrobeAvail = wardrobeAvailable ?? wardrobeBonus
   const [errorFlash, setErrorFlash] = useState(false)
@@ -385,6 +394,9 @@ export function ApproachDie({
   // doesn't visibly react right away reads as broken and players let go
   // before it ever arms.
   const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    // No Dice Mode: the hold-then-swipe roll gesture does nothing — pips
+    // are tapped directly instead (see the pip-rendering block below).
+    if (noDiceMode) return
     if (poolMax <= 0) return
     rolledThisGesture.current = false
     gestureStart.current = { x: event.clientX, y: event.clientY }
@@ -772,7 +784,9 @@ export function ApproachDie({
   const isDepleted = poolMax <= 0 && trackMax + displayWardrobeBonus > 0
   const totalSlots = STAT_AND_METHOD_MAX
 
-  const rollHint = poolMax <= 0
+  const rollHint = noDiceMode
+    ? "Tap a pip to Overload it"
+    : poolMax <= 0
     ? "No dice"
     : errorFlash
     ? "No more dice"
@@ -851,14 +865,17 @@ export function ApproachDie({
           return (
             <span
               key={pip.key}
-              className={`method-die-pip${isWardrobe ? " wardrobe" : ""}${isAvailable ? " available" : " spent"}${isPreview ? " drag-preview" : ""}`}
-              style={{ gridColumn: slot }}
+              className={`method-die-pip${isWardrobe ? " wardrobe" : ""}${isAvailable ? " available" : " spent"}${isPreview ? " drag-preview" : ""}${noDiceMode ? " no-dice-tappable" : ""}`}
+              style={{ gridColumn: slot, WebkitUserSelect: noDiceMode ? "none" : undefined, WebkitTouchCallout: noDiceMode ? "none" : undefined }}
               title={
                 isWardrobe
                   ? `Wardrobe bonus die${wardrobeItems.length ? ` (${wardrobeItems.join(", ")})` : ""}. Always rolled; ${pip.spent ? "spent (Overloaded away)." : "Overload-spendable, same as a base die."}`
                   : undefined
               }
               aria-hidden={isWardrobe ? undefined : "true"}
+              role={noDiceMode ? "button" : undefined}
+              onPointerDown={noDiceMode ? (event) => event.stopPropagation() : undefined}
+              onClick={noDiceMode ? () => onToggleOverloadPip?.(pip.origin, pip.spent) : undefined}
             >
               {slot}
             </span>

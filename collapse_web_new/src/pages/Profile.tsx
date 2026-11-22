@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { isNoDiceMode, setNoDiceMode, subscribeNoDiceMode } from '../utils/noDiceMode';
 
 const BASE_URL = import.meta.env.BASE_URL as string;
 
@@ -52,6 +53,71 @@ function readCharName(slot: number): string {
     return '';
   }
 }
+
+// Per-device toggle (NOT per-character, NOT network-synced): when on, the
+// app stops rolling anything and just records what the player rolls/does
+// math for at the table. Shown above the bio card in both display and
+// setup modes since it's a device setting, not profile data.
+const NoDiceModeToggle: React.FC = () => {
+  const [on, setOn] = useState(() => isNoDiceMode());
+
+  useEffect(() => subscribeNoDiceMode(() => setOn(isNoDiceMode())), []);
+
+  return (
+    <section
+      aria-label="No Dice Mode"
+      style={{
+        width: '100%',
+        maxWidth: 340,
+        borderRadius: 10,
+        border: '1px solid rgba(15,246,255,0.18)',
+        background: 'rgba(15,246,255,0.03)',
+        padding: '12px 14px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+      }}
+    >
+      <div>
+        <div style={{ fontSize: '0.78rem', letterSpacing: '0.1em', fontFamily: 'var(--font-display)', color: 'rgba(15,246,255,0.85)' }}>NO DICE MODE</div>
+        <div style={{ fontSize: '0.68rem', color: 'var(--muted)', marginTop: 2, maxWidth: 230 }}>
+          The app is your character sheet. You roll and do math at the table; nothing here rolls for you. This device only.
+        </div>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        onClick={() => setNoDiceMode(!on)}
+        style={{
+          flexShrink: 0,
+          width: 48,
+          height: 28,
+          borderRadius: 999,
+          border: `1px solid ${on ? 'var(--accent)' : 'rgba(255,255,255,0.25)'}`,
+          background: on ? 'rgba(15,246,255,0.25)' : 'rgba(255,255,255,0.06)',
+          position: 'relative',
+          cursor: 'pointer',
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            position: 'absolute',
+            top: 2,
+            left: on ? 22 : 2,
+            width: 22,
+            height: 22,
+            borderRadius: '50%',
+            background: on ? 'var(--accent)' : 'rgba(255,255,255,0.4)',
+            transition: 'left 0.15s ease',
+          }}
+        />
+      </button>
+    </section>
+  );
+};
 
 const BarcodeStripe: React.FC = () => {
   const bars = Array.from({ length: 42 }, (_, i) => {
@@ -304,7 +370,8 @@ export default function ProfilePage({
   const miniMatrixSrc = `${BASE_URL}csmatrix/index.html?mini=1&slot=${charSlot}`;
 
   return (
-    <main aria-label="Bio Card" style={{ minHeight: '100vh', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '1.5rem 1rem 4rem' }}>
+    <main aria-label="Bio Card" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', gap: 16, padding: '1.5rem 1rem 4rem' }}>
+      <NoDiceModeToggle />
       {mode === 'display' ? (
         <DisplayCard
           data={data}

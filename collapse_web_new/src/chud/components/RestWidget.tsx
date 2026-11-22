@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CollapseModifiers, CoreStats } from "../../types/chud";
 import { computeDerived, DEFAULT_COLLAPSE_MODIFIERS } from "../../domain/chudStats";
+import { isNoDiceMode, subscribeNoDiceMode } from "../../utils/noDiceMode";
 
 // Matches Chud.tsx's real pre-save default (an unset character has no Core
 // points yet) — falling back to DEFAULT_CORE's 3/2/2 here disagreed with
@@ -43,6 +44,8 @@ export function RestWidget({
   const [fullRestPending, setFullRestPending] = useState<boolean>(() =>
     typeof window !== "undefined" ? hasPendingNotification("full-rest") : false
   );
+  const [noDiceMode, setNoDiceModeState] = useState<boolean>(() => isNoDiceMode());
+  useEffect(() => subscribeNoDiceMode(() => setNoDiceModeState(isNoDiceMode())), []);
 
   useEffect(() => {
     const handler = (e: StorageEvent) => {
@@ -79,16 +82,28 @@ export function RestWidget({
     if (hasPendingNotification("full-rest")) return;
     // Grit restores by rolling 1d6, capped so Grit cannot exceed (6 − current
     // Collapse) — Full Rest also refills Ganbare! Charges (handbook v12
-    // p42) alongside HP, Engram charges, and Method dice.
+    // p42) alongside HP, Engram charges, and Method dice. No Dice Mode (C5)
+    // restores everything EXCEPT Grit — the player rerolls 1d6 themselves
+    // at the table and sets it on the bar, so no Grit delta is attached.
+    const activeCore = core ?? readCore(storageKey) ?? ZERO_CORE;
+    const activeModifiers = collapseModifiers ?? readCollapseModifiers(storageKey) ?? DEFAULT_COLLAPSE_MODIFIERS;
+    const hpMax = computeDerived(activeCore, activeModifiers).hp;
+    const hpDelta = hpMax - readHpCounter(storageKey);
+    if (noDiceMode) {
+      const created = pushNotification(
+        "full-rest",
+        "Full Rest",
+        "Roll 1d6 and set Grit on the bar. Accept to restore HP to full, refill all Engram charges, refill all Ganbare! Charges, and reset Method dice.",
+        { hp: hpDelta, restoreOverload: true, fullEngramRestore: true }
+      );
+      if (created) setFullRestPending(true);
+      return;
+    }
     const roll = 1 + Math.floor(Math.random() * 6);
     const { grit: currentGrit, collapse } = readGlobalMeters();
     const maxGrit = maxGritForCollapse(collapse);
     const targetGrit = Math.min(maxGrit, roll);
     const gritDelta = targetGrit - currentGrit;
-    const activeCore = core ?? readCore(storageKey) ?? ZERO_CORE;
-    const activeModifiers = collapseModifiers ?? readCollapseModifiers(storageKey) ?? DEFAULT_COLLAPSE_MODIFIERS;
-    const hpMax = computeDerived(activeCore, activeModifiers).hp;
-    const hpDelta = hpMax - readHpCounter(storageKey);
     const capNote = roll > maxGrit ? ` (max Grit is ${maxGrit} with current Collapse)` : "";
     const created = pushNotification(
       "full-rest",
@@ -98,22 +113,24 @@ export function RestWidget({
       { roll: { die: 6, value: roll } }
     );
     if (created) setFullRestPending(true);
-  }, [core, storageKey, collapseModifiers]);
+  }, [core, storageKey, collapseModifiers, noDiceMode]);
 
   return (
     <div className="mods rest-widget">
       <h3>Rest</h3>
 
       <div className="rest-stack">
-        <button
-          type="button"
-          className="rest-stack-btn digdeep"
-          onClick={onDigDeep}
-          disabled={digDeepPending}
-          title={digDeepPending ? "Resolve the pending Dig Deep notification first" : undefined}
-        >
-          {digDeepPending ? "Dig Deep (pending…)" : "Dig Deep"}
-        </button>
+        {!noDiceMode && (
+          <button
+            type="button"
+            className="rest-stack-btn digdeep"
+            onClick={onDigDeep}
+            disabled={digDeepPending}
+            title={digDeepPending ? "Resolve the pending Dig Deep notification first" : undefined}
+          >
+            {digDeepPending ? "Dig Deep (pending…)" : "Dig Deep"}
+          </button>
+        )}
         <button
           type="button"
           className="rest-stack-btn fullrest"

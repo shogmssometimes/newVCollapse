@@ -1409,6 +1409,15 @@ body::after {
   pointer-events: none;
 }
 
+.method-die-pip.no-dice-tappable {
+  pointer-events: auto;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.method-die-pip.no-dice-tappable:active {
+  transform: scale(0.88);
+}
+
 /* A circle past the Method's base rating — this Method hasn't grown a die
    here yet. Shown hollow/dashed so the full 1-6 track always reads the
    same way the printed sheet does. */

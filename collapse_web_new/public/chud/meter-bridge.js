@@ -19,6 +19,16 @@ const CHUD_STATE_KEY = _slotKey('chud.state.v1', 'chud.state')
 const WARDROBE_STORAGE_KEY = _slotKey('wardrobe.v1', 'wardrobe')
 const STATUS_ROLL_MAX = 50
 const STATUS_ROLL_MAX_ROWS = 10
+// No Dice Mode (per-device, not per-slot — src/utils/noDiceMode.ts is the
+// TS mirror of this same key/flag): when on, the app never rolls — it's
+// just the character sheet. Read fresh each time rather than cached, since
+// it can be flipped from Profile.tsx in another tab at any moment.
+const NO_DICE_MODE_KEY = 'collapse.noDiceMode'
+function isNoDiceMode() {
+  try {
+    return localStorage.getItem(NO_DICE_MODE_KEY) === '1'
+  } catch { return false }
+}
 const STATUS_ROLL_DEFAULT_ROWS = 2
 // Handbook's Status Effects table (Phase "Environmental Effects In
 // Action"), 27 entries — see /tmp/v10.txt around line 2195 for the source
@@ -588,14 +598,26 @@ function buildGritCollapseMeter(getMeters, setMeters) {
         if (next === prevGrit) return
         setMeters({ ...meters, grit: next })
         if (prevGrit > 0 && next === 0 && !hasPendingNotification('grit-zero')) {
-          const rolled = 1 + Math.floor(Math.random() * 6)
-          pushNotification(
-            'grit-zero',
-            'Grit reached 0',
-            `Accept to apply +1 Collapse and recover Grit, or cancel to leave Grit at 0.`,
-            { collapse: 1, grit: rolled },
-            { roll: { die: 6, value: rolled } }
-          )
+          if (isNoDiceMode()) {
+            // No Dice Mode (C4): Grit stays at 0 until the player raises it
+            // themselves — accepting only applies +1 Collapse, no rolled
+            // Grit value attached.
+            pushNotification(
+              'grit-zero',
+              'Grit reached 0',
+              '+1 Collapse. Reroll Grit at the table and set it on the bar.',
+              { collapse: 1 }
+            )
+          } else {
+            const rolled = 1 + Math.floor(Math.random() * 6)
+            pushNotification(
+              'grit-zero',
+              'Grit reached 0',
+              `Accept to apply +1 Collapse and recover Grit, or cancel to leave Grit at 0.`,
+              { collapse: 1, grit: rolled },
+              { roll: { die: 6, value: rolled } }
+            )
+          }
         }
       } else {
         const next = clamp((meters.collapse ?? 0) + delta)
@@ -795,6 +817,7 @@ function buildStatusRollsPanel() {
         roll: clampStatusRoll(Number(row?.roll ?? 0)),
         direction: row?.direction === 'out' ? 'out' : 'in',
         firstRollDone: row?.firstRollDone === true,
+        openValueEntry: row?.openValueEntry === true,
       }
     })
     while (safe.length < STATUS_ROLL_DEFAULT_ROWS) safe.push(newRow())
@@ -1178,7 +1201,10 @@ function buildStatusRollsPanel() {
         dirHoldTimer = setTimeout(() => {
           dirLongPressed = true
           clearDirHold()
-          if (row.direction === 'in') {
+          // No Dice Mode: the Save button/gesture is hidden — players
+          // type their own Set Roll value and decide outcomes at the
+          // table instead.
+          if (row.direction === 'in' && !isNoDiceMode()) {
             openSaveModal(row, persist, renderRows, markCleared)
           }
         }, DIR_HOLD_MS)
@@ -1324,8 +1350,11 @@ function buildStatusRollsPanel() {
       val.title = 'Tap to type the value directly'
       // Tapping the value swaps it for a direct-entry number field (same
       // idea as the HUD HP card) — lets a player type what they rolled at
-      // the table instead of stepping -/+ one at a time.
-      val.addEventListener('click', () => {
+      // the table instead of stepping -/+ one at a time. Also opened
+      // automatically for a row an Engram's No Dice Mode "Play" just
+      // created (row.openValueEntry) — the player still has to type what
+      // they actually rolled at the table.
+      const openValueInput = () => {
         const input = document.createElement('input')
         input.type = 'number'
         input.inputMode = 'numeric'
@@ -1348,7 +1377,8 @@ function buildStatusRollsPanel() {
         val.replaceWith(input)
         input.focus()
         input.select()
-      })
+      }
+      val.addEventListener('click', openValueInput)
       const plus = document.createElement('button')
       plus.className = 'status-roll-value-btn'
       plus.textContent = '+'
@@ -1368,6 +1398,13 @@ function buildStatusRollsPanel() {
       valueWrap.appendChild(minus)
       valueWrap.appendChild(val)
       valueWrap.appendChild(plus)
+
+      if (row.openValueEntry) {
+        row.openValueEntry = false
+        persist()
+        // Deferred so the row is actually in the DOM first.
+        setTimeout(openValueInput, 0)
+      }
 
       if (clearedRowIds.has(row.id)) {
         const clearedOverlay = document.createElement('div')

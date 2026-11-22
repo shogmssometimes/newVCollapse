@@ -7,14 +7,21 @@ export function EngramPanel({
   engramState,
   engramStorageKey,
   onStageForRoller,
+  noDiceMode,
 }: {
   engramState: EngramManagerState;
   engramStorageKey: string;
   onStageForRoller: (id: string, name: string, charges: number) => void;
+  noDiceMode?: boolean;
 }) {
   return (
     <div className="mods">
-      <EngramBriefWidget state={engramState} storageKey={engramStorageKey} onStageForRoller={onStageForRoller} />
+      <EngramBriefWidget
+        state={engramState}
+        storageKey={engramStorageKey}
+        onStageForRoller={onStageForRoller}
+        noDiceMode={noDiceMode}
+      />
     </div>
   );
 }

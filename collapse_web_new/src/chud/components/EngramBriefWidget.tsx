@@ -3,6 +3,7 @@ import { engramCatalogById } from "../../data/handbook/engramCatalog";
 import { addEngramCharge, spendAllEngramCharges, type EngramManagerState } from "../../utils/engramState";
 import { STANDARD_LONG_PRESS_MS } from "../../utils/gestureConstants";
 import { lockScroll, unlockScroll } from "../../utils/scrollLock";
+import { addSetRollRow } from "../../utils/chudVanillaBridge";
 
 const SWIPE_THRESHOLD_PX = 30;
 // Movement past this, before a swipe/tap is decided, cancels an in-flight
@@ -12,7 +13,8 @@ const MOVE_CANCEL_PX = 10;
 
 type ActivatePopup =
   | { kind: "staged"; name: string; charges: number }
-  | { kind: "effect"; name: string; text: string };
+  | { kind: "effect"; name: string; text: string }
+  | { kind: "played"; name: string; text: string };
 
 // Swipeable Engram queue widget — mirrors GearBriefWidget's layout. Gestures:
 // swipe left/right cycles through every *equipped* Engram (copies > 0,
@@ -30,11 +32,17 @@ export function EngramBriefWidget({
   state,
   storageKey,
   onStageForRoller,
+  noDiceMode = false,
 }: {
   state: EngramManagerState;
   storageKey: string;
   /** Stages a roll-type Engram's charge count as the shared standby chip in every Method roll popup. Omitted on the Engram Manager's equip-screen preview, where there's no roller to stage into. */
   onStageForRoller?: (id: string, name: string, charges: number) => void;
+  /** No Dice Mode (C2): the long-press-to-activate gesture is replaced by
+   * a visible "Play ×N" button — there's no roller to stage into, so
+   * playing an Engram spends its charges immediately and shows a toast
+   * instead. Swipe-to-cycle and tap-to-charge are unchanged. */
+  noDiceMode?: boolean;
 }) {
   const [idx, setIdx] = useState(0);
   const [holdProgress, setHoldProgress] = useState(0); // 0–100
@@ -95,6 +103,34 @@ export function EngramBriefWidget({
       setPopup({ kind: "staged", name: entry.name, charges: spent });
     } else {
       setPopup({ kind: "effect", name: entry.name, text: def?.effect ?? "" });
+    }
+  };
+
+  // No Dice Mode (C2): there's no roller to stage into, so "Play" spends
+  // charges immediately. The toast names the dice the player now rolls by
+  // hand ("xd4" in the handbook note scales with charges spent; a fixed
+  // note like "Roll 1d10" doesn't). Engrams with no dice notation at all
+  // just show their effect text, same as the Dice Mode long-press popup.
+  // Engrams whose note contains "; Set" (Distract, Stun, Shield, Fortify,
+  // etc.) also open a pre-filled, value-editable Set Rolls row.
+  const playEngram = () => {
+    if (!entry || entry.charges <= 0) return;
+    const def = engramCatalogById[entry.id];
+    const spent = spendAllEngramCharges(storageKey, entry.id);
+    if (spent <= 0) return;
+    const note = def?.note ?? "";
+    const diceMatch = note.match(/Roll\s+(x|\d+)\s*d\s*(\d+)/i);
+    const diceText = diceMatch
+      ? diceMatch[1].toLowerCase() === "x"
+        ? `${spent}d${diceMatch[2]}`
+        : `${diceMatch[1]}d${diceMatch[2]}`
+      : null;
+    const toastText = diceText
+      ? `${entry.name} ×${spent} played — roll ${diceText}.`
+      : `${entry.name} ×${spent} played — ${def?.effect ?? ""}`;
+    setPopup({ kind: "played", name: entry.name, text: toastText });
+    if (note.includes("; Set")) {
+      addSetRollRow(0, { name: entry.name, effect: def?.effect ?? "", openValueEntry: true });
     }
   };
 
@@ -179,7 +215,9 @@ export function EngramBriefWidget({
         // fighting the same finger movement makes the swipe-to-cycle and
         // long-press-to-activate gestures here harder to land.
         lockScroll();
-        startHold();
+        // No Dice Mode: activation is a visible Play button, not a
+        // long-press — don't start the hold-to-activate timer.
+        if (!noDiceMode) startHold();
       }}
       onPointerMove={e => {
         if (!touchStart.current || !isHolding.current) return;
@@ -282,6 +320,28 @@ export function EngramBriefWidget({
           {safeIdx + 1} / {activeCount}
         </span>
       </div>
+      {noDiceMode && entry && entry.charges > 0 && (
+        <button
+          type="button"
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); playEngram(); }}
+          style={{
+            marginTop: 2,
+            padding: '4px 8px',
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+            color: '#04161a',
+            background: 'var(--accent, #0ff6ff)',
+            border: 'none',
+            borderRadius: 6,
+            cursor: 'pointer',
+          }}
+        >
+          Play ×{entry.charges}
+        </button>
+      )}
       {popup && (
         <div
           role="button"
@@ -319,23 +379,25 @@ export function EngramBriefWidget({
                 marginBottom: 8,
               }}
             >
-              Engrams Charged to Roll
+              {popup.kind === "played" ? "Engram Played" : "Engrams Charged to Roll"}
             </div>
-            <div
-              style={{
-                fontSize: '0.8rem',
-                color: 'rgba(248,250,252,0.85)',
-                marginBottom: popup.kind === "staged" ? 8 : 0,
-              }}
-            >
-              {popup.name}
-            </div>
+            {popup.kind !== "played" && (
+              <div
+                style={{
+                  fontSize: '0.8rem',
+                  color: 'rgba(248,250,252,0.85)',
+                  marginBottom: popup.kind === "staged" ? 8 : 0,
+                }}
+              >
+                {popup.name}
+              </div>
+            )}
             {popup.kind === "staged" ? (
               <div style={{ fontSize: '0.78rem', color: 'rgba(248,250,252,0.6)' }}>
                 Staged × {popup.charges} — tap the standby chip in any Method's roll popup to roll it in.
               </div>
             ) : (
-              <div style={{ fontSize: '0.78rem', color: 'rgba(248,250,252,0.6)', fontStyle: 'italic' }}>
+              <div style={{ fontSize: '0.78rem', color: 'rgba(248,250,252,0.6)', fontStyle: popup.kind === "effect" ? 'italic' : 'normal' }}>
                 {popup.text}
               </div>
             )}

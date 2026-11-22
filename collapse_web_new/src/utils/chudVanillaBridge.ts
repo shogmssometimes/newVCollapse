@@ -55,17 +55,24 @@ function notify(key: string, json: string) {
  * Rolls widget, which keys that glow off an empty name rather than this
  * pre-fill text so there's no boilerplate to delete every time). Placed at
  * the front of the list so it survives the widget's 10-row display cap.
+ *
+ * No Dice Mode's Engram "Play" flow pre-fills `name`/`effect` instead (the
+ * Engram's own name/effect text, so the row doesn't glow as "unnamed") and
+ * sets `openValueEntry` so meter-bridge.js opens the tap-to-type value
+ * field immediately — the player still has to type what they rolled at
+ * the table.
  */
-export function addSetRollRow(value: number): void {
+export function addSetRollRow(value: number, options?: { name?: string; effect?: string; openValueEntry?: boolean }): void {
   try {
     const raw = window.localStorage.getItem(STATUS_ROLLS_KEY());
     const parsed: StatusRollsState = raw ? JSON.parse(raw) : { rows: [] };
     const rows = Array.isArray(parsed.rows) ? parsed.rows : [];
-    const row: StatusRollRow = {
+    const row: StatusRollRow & { openValueEntry?: boolean } = {
       id: `sr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      name: "",
-      effect: "",
+      name: options?.name ?? "",
+      effect: options?.effect ?? "",
       roll: value,
+      ...(options?.openValueEntry ? { openValueEntry: true } : {}),
     };
     const json = JSON.stringify({ rows: [row, ...rows] });
     window.localStorage.setItem(STATUS_ROLLS_KEY(), json);

@@ -9,6 +9,7 @@ import { rollFlatDice } from "../../domain/approachDice";
 import { createLongPressHandlers } from "../../utils/createLongPressHandlers";
 import { CORE_APPROACH_MAP, APPROACH_LABELS, CORE_LABELS } from "../../domain/coreApproachMap";
 import { DEFAULT_COLLAPSE_MODIFIERS, formatStatWithModifier } from "../../domain/chudStats";
+import { isNoDiceMode, subscribeNoDiceMode } from "../../utils/noDiceMode";
 
 // Matches ApproachDie.tsx's Method-roll tumble animation timing exactly, so
 // the Readiness roll "feels" like the same dice engine rather than a
@@ -68,6 +69,8 @@ export function Page2Panel({
   collapseModifiers?: CollapseModifiers;
 }) {
   const [openDistribution, setOpenDistribution] = useState<keyof CoreStats | null>(null);
+  const [noDiceMode, setNoDiceModeState] = useState<boolean>(() => isNoDiceMode());
+  useEffect(() => subscribeNoDiceMode(() => setNoDiceModeState(isNoDiceMode())), []);
   const [readinessRolling, setReadinessRolling] = useState(false);
   const [readinessRollPreview, setReadinessRollPreview] = useState(1);
   const [readinessRoll, setReadinessRoll] = useState<{ die: number; lastDisplay: boolean } | null>(null);
@@ -153,24 +156,32 @@ export function Page2Panel({
         <div
           ref={readinessChipRef}
           className="chip"
-          {...readinessPressHandlers}
-          style={{ cursor: "pointer", touchAction: "manipulation" }}
+          {...(noDiceMode ? {} : readinessPressHandlers)}
+          style={{ cursor: noDiceMode ? "default" : "pointer", touchAction: "manipulation" }}
           aria-label={
-            isOverEncumbered
+            noDiceMode
+              ? `Readiness reference: 1d10 + Readiness (${readyness}). Roll at the table.`
+              : isOverEncumbered
               ? "Readiness: Last (over-encumbered). Long-press to roll."
               : `Readiness ${readyness}. Long-press to roll 1d10 plus Readiness.`
           }
         >
           <span>READINESS</span>
-          <strong style={isOverEncumbered ? { color: 'rgba(255,100,100,0.95)', fontStyle: 'italic' } : undefined}>
-            {isOverEncumbered ? 'Last' : formatStatWithModifier(readyness, collapseModifiers.readiness)}
-          </strong>
+          {noDiceMode ? (
+            <strong style={isOverEncumbered ? { color: 'rgba(255,100,100,0.95)', fontStyle: 'italic' } : undefined}>
+              {isOverEncumbered ? 'Last' : `1d10 + ${formatStatWithModifier(readyness, collapseModifiers.readiness)}`}
+            </strong>
+          ) : (
+            <strong style={isOverEncumbered ? { color: 'rgba(255,100,100,0.95)', fontStyle: 'italic' } : undefined}>
+              {isOverEncumbered ? 'Last' : formatStatWithModifier(readyness, collapseModifiers.readiness)}
+            </strong>
+          )}
         </div>
         <button className="topbar-square-btn" onClick={onOpenMgr}>
           MGR
         </button>
       </div>
-      {(readinessRolling || readinessRoll) && (
+      {!noDiceMode && (readinessRolling || readinessRoll) && (
         <div ref={readinessPopupRef} className="approach-die-popup">
           <button
             type="button"
@@ -206,6 +217,21 @@ export function Page2Panel({
               </>
             )
           )}
+        </div>
+      )}
+
+      {noDiceMode && (collapseModifiers.totalAll !== 0 || collapseModifiers.totalAttackDefense !== 0) && (
+        // C8: with no roller to apply these to automatically, remind the
+        // player to add them by hand at the table.
+        <div className="chip" style={{ fontStyle: "italic", opacity: 0.85 }}>
+          <span>Totals</span>
+          <strong>
+            {collapseModifiers.totalAll !== 0 ? `${collapseModifiers.totalAll >= 0 ? "+" : ""}${collapseModifiers.totalAll} every roll` : null}
+            {collapseModifiers.totalAll !== 0 && collapseModifiers.totalAttackDefense !== 0 ? ", " : null}
+            {collapseModifiers.totalAttackDefense !== 0
+              ? `${collapseModifiers.totalAttackDefense >= 0 ? "+" : ""}${collapseModifiers.totalAttackDefense} Attack/Defense`
+              : null}
+          </strong>
         </div>
       )}
 

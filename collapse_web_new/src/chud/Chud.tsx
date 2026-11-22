@@ -23,6 +23,7 @@ import { loadState, readGearData, readWardrobeData } from "../utils/chudPersiste
 import { wardrobeKey, deckBuilderKey } from "../utils/slotKeys";
 import { adjustGlobalMeters, resetApproachOverload, resetGanbareCharges, setVanillaBridgeSlot } from "../utils/chudVanillaBridge";
 import { fullRestEngrams, readEngramState, refundEngramCharges, type EngramManagerState } from "../utils/engramState";
+import { isNoDiceMode, subscribeNoDiceMode } from "../utils/noDiceMode";
 import {
   getNotificationsStorageKey,
   listNotifications,
@@ -108,6 +109,8 @@ export default function Chud() {
   );
 
   const [shortRest, setShortRest] = useState<boolean>(saved?.shortRest ?? false);
+  const [noDiceMode, setNoDiceModeState] = useState<boolean>(() => isNoDiceMode());
+  useEffect(() => subscribeNoDiceMode(() => setNoDiceModeState(isNoDiceMode())), []);
   // Collapse Modifiers are owned/edited by the AAG page — this is a
   // read-only echo kept in sync via the storage listener below, same
   // pattern as `core`/`approach`, so every derived stat computed in this
@@ -189,6 +192,26 @@ export default function Chud() {
     }
     return fullySpent;
   }, [approach, approachWardrobeBonus, collapseModifiers]);
+
+  // No Dice Mode: tapping a pip directly flips exactly 1 die the other
+  // way — spending one via the same overloadApproachDie path if it was
+  // available, or restoring one (mirrors receiveGanbare's restore, but
+  // keyed off the Method the tapped pip actually belongs to) if it was
+  // already spent.
+  const toggleOverloadApproachPip = useCallback(
+    (field: keyof ApproachStats, origin: "base" | "wardrobe", wasSpent: boolean): void => {
+      if (!wasSpent) {
+        overloadApproachDie(field, origin === "base" ? 1 : 0, origin === "wardrobe" ? 1 : 0);
+        return;
+      }
+      if (origin === "base") {
+        setApproachOverloadSpent((prev) => ({ ...prev, [field]: Math.max(0, (prev[field] ?? 0) - 1) }));
+      } else {
+        setApproachWardrobeOverloadSpent((prev) => ({ ...prev, [field]: Math.max(0, (prev[field] ?? 0) - 1) }));
+      }
+    },
+    [overloadApproachDie]
+  );
 
 
   // "Receive Ganbare!" — a friend spends one of *their* Ganbare! Charges to
@@ -441,6 +464,7 @@ export default function Chud() {
             engramState={engramState}
             engramStorageKey={DECK_BUILDER_KEY}
             onStageForRoller={onStageForRoller}
+            noDiceMode={noDiceMode}
             methods={
               <ApproachPanel
                 core={core}
@@ -457,6 +481,8 @@ export default function Chud() {
                 onConsumeStagedEngram={onConsumeStagedEngram}
                 onRefundEngram={onRefundEngram}
                 collapseModifiers={collapseModifiers}
+                noDiceMode={noDiceMode}
+                onToggleOverloadPip={toggleOverloadApproachPip}
               />
             }
           />

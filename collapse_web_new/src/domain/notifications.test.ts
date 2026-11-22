@@ -48,4 +48,13 @@ describe("queueHpZeroNotificationsIfNeeded", () => {
     queueHpZeroNotificationsIfNeeded(1, 0, true);
     expect(listNotifications().filter((n) => n.kind === "hp-zero")).toHaveLength(1);
   });
+
+  it("at Collapse 6, hp-zero is Narrative Death: no revive effect and no '1 HP' wording", () => {
+    queueHpZeroNotificationsIfNeeded(1, 0, true, true);
+    const n = listNotifications().find((item) => item.kind === "hp-zero");
+    expect(n).toBeDefined();
+    expect(n!.effect).toEqual({});
+    expect(n!.detail).toMatch(/Narrative Death/i);
+    expect(n!.detail).not.toMatch(/1 HP/i);
+  });
 });

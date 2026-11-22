@@ -8,7 +8,21 @@ import {
   setNotificationsSlot,
   type PendingNotification,
 } from "../domain/notifications";
-import { adjustGlobalMeters, adjustHpCounter, readCollapsePath, setCollapsePath, resetApproachOverload, resetGanbareCharges, setVanillaBridgeSlot } from "../utils/chudVanillaBridge";
+import {
+  adjustGlobalMeters,
+  adjustHpCounter,
+  maxGritForCollapse,
+  readCollapseModifiers,
+  readCollapsePath,
+  readCore,
+  readGlobalMeters,
+  readHpCounter,
+  setCollapsePath,
+  resetApproachOverload,
+  resetGanbareCharges,
+  setVanillaBridgeSlot,
+} from "../utils/chudVanillaBridge";
+import { computeDerived, DEFAULT_COLLAPSE_MODIFIERS } from "../domain/chudStats";
 import { chudStateKey, deckBuilderKey } from "../utils/slotKeys";
 import { fullRestEngrams } from "../utils/engramState";
 
@@ -49,6 +63,26 @@ export function HeaderNotificationsBell({ charSlot }: { charSlot: number }) {
       const n = notifications.find((item) => item.id === id);
       if (n && accept) {
         if (n.effect.hp) adjustHpCounter(n.effect.hp, chudStateKey(charSlot));
+        // Resolved live against this slot's current HP/Grit/Collapse right
+        // now — not a delta baked in when the notification was queued,
+        // which would go stale if another notification (e.g. Dig Deep then
+        // Full Rest) was accepted first while this one still sat pending.
+        if (n.effect.setHpToMax) {
+          const key = chudStateKey(charSlot);
+          const core = readCore(key) ?? { vigor: 0, inference: 0, personality: 0 };
+          const modifiers = readCollapseModifiers(key) ?? DEFAULT_COLLAPSE_MODIFIERS;
+          const hpMax = computeDerived(core, modifiers).hp;
+          adjustHpCounter(hpMax - readHpCounter(key), key);
+        }
+        if (n.effect.gritGainRaw != null || n.effect.gritSetRaw != null) {
+          const { grit: currentGrit, collapse: currentCollapse } = readGlobalMeters();
+          const maxGrit = maxGritForCollapse(currentCollapse);
+          const target =
+            n.effect.gritSetRaw != null
+              ? Math.min(maxGrit, n.effect.gritSetRaw)
+              : Math.min(maxGrit, currentGrit + (n.effect.gritGainRaw ?? 0));
+          adjustGlobalMeters({ grit: target - currentGrit });
+        }
         if (n.effect.grit != null || n.effect.collapse != null) {
           adjustGlobalMeters({ grit: n.effect.grit, collapse: n.effect.collapse });
         }

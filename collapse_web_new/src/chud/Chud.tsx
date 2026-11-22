@@ -21,7 +21,7 @@ import { clampApproachToCore, clampCore } from "../domain/coreApproachMap";
 import { computeWardrobeBonuses } from "../domain/wardrobeBonus";
 import { loadState, readGearData, readWardrobeData } from "../utils/chudPersistence";
 import { wardrobeKey, deckBuilderKey } from "../utils/slotKeys";
-import { adjustGlobalMeters, resetApproachOverload, resetGanbareCharges, setVanillaBridgeSlot } from "../utils/chudVanillaBridge";
+import { adjustGlobalMeters, maxGritForCollapse, readGlobalMeters, resetApproachOverload, resetGanbareCharges, setVanillaBridgeSlot } from "../utils/chudVanillaBridge";
 import { fullRestEngrams, readEngramState, refundEngramCharges, type EngramManagerState } from "../utils/engramState";
 import { isNoDiceMode, subscribeNoDiceMode } from "../utils/noDiceMode";
 import {
@@ -376,7 +376,8 @@ export default function Chud() {
     (delta: number) => {
       const prevHp = hpCounter;
       const nextHp = Math.min(Math.max(prevHp + delta, 0), hpMax);
-      if (queueHpZeroNotificationsIfNeeded(prevHp, nextHp, hasBeenDownedBefore)) {
+      const { collapse } = readGlobalMeters();
+      if (queueHpZeroNotificationsIfNeeded(prevHp, nextHp, hasBeenDownedBefore, collapse >= 6)) {
         setHasBeenDownedBefore(true);
       }
       setHpCounterRaw(nextHp);
@@ -391,6 +392,20 @@ export default function Chud() {
       if (!n) return;
       if (accept) {
         if (n.effect.hp) applyHpDelta(n.effect.hp);
+        // Resolved live, against HP/Grit/Collapse right now — not a delta
+        // baked in when the notification was first queued, which could go
+        // stale if another notification (e.g. Dig Deep then Full Rest)
+        // changed HP/Grit/Collapse while this one still sat pending.
+        if (n.effect.setHpToMax) applyHpDelta(hpMax - hpCounter);
+        if (n.effect.gritGainRaw != null || n.effect.gritSetRaw != null) {
+          const { grit: currentGrit, collapse: currentCollapse } = readGlobalMeters();
+          const maxGrit = maxGritForCollapse(currentCollapse);
+          const target =
+            n.effect.gritSetRaw != null
+              ? Math.min(maxGrit, n.effect.gritSetRaw)
+              : Math.min(maxGrit, currentGrit + (n.effect.gritGainRaw ?? 0));
+          adjustGlobalMeters({ grit: target - currentGrit });
+        }
         if (n.effect.grit != null || n.effect.collapse != null) {
           adjustGlobalMeters({ grit: n.effect.grit, collapse: n.effect.collapse });
         }
@@ -431,7 +446,7 @@ export default function Chud() {
       removeNotification(id);
       setNotifications(listNotifications());
     },
-    [notifications, applyHpDelta, collapsePath]
+    [notifications, applyHpDelta, collapsePath, hpMax, hpCounter]
   );
 
   return (

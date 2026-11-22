@@ -67,6 +67,13 @@ export function HPPanel({
   const [hpInput, setHpInput] = useState("");
 
   const commitHpInput = () => {
+    // An emptied field used to coerce to 0 via Number("") === 0 and commit
+    // it as 0 HP — tripping Collapse just from clearing the box to retype,
+    // not an actual HP-to-0 edit. Treat empty/invalid as "cancel" instead.
+    if (hpInput.trim() === "") {
+      setEditingHp(false);
+      return;
+    }
     const n = Math.round(Number(hpInput));
     if (Number.isFinite(n)) onHpSet(Math.min(Math.max(n, 0), hpMax));
     setEditingHp(false);

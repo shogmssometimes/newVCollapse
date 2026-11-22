@@ -29,6 +29,21 @@ export type NotificationEffect = {
   restoreOverload?: boolean;
   /** Full Rest: refills every equipped Engram's charges to max. */
   fullEngramRestore?: boolean;
+  /** Full Rest: set HP to max at accept time (computed live), instead of a
+   * delta baked in when the notification was created — HP (or its max, via
+   * Collapse Modifiers) can change while this sits pending, which would
+   * otherwise make a precomputed delta overshoot or undershoot max. */
+  setHpToMax?: boolean;
+  /** Dig Deep: add this much Grit (the raw roll, before any cap) to
+   * whatever Grit actually is at accept time, capped at (6 − current
+   * Collapse) — resolved live instead of baking in a capped amount at
+   * press time, which could go stale if Grit/Collapse changed (e.g. a
+   * different notification accepted) while this one was still pending. */
+  gritGainRaw?: number;
+  /** Full Rest: set Grit to this raw rolled value (not added to whatever
+   * Grit currently is), capped at (6 − current Collapse) at accept time,
+   * same staleness reasoning as gritGainRaw. */
+  gritSetRaw?: number;
 };
 
 export type NotificationChoice = { key: string; label: string };
@@ -174,15 +189,20 @@ export function removeNotification(id: string): void {
 export function queueHpZeroNotificationsIfNeeded(
   prevHp: number,
   nextHp: number,
-  hasBeenDownedBefore: boolean
+  hasBeenDownedBefore: boolean,
+  collapseMaxed = false
 ): boolean {
   if (!(prevHp > 0 && nextHp <= 0)) return false;
   if (!hasPendingNotification("hp-zero")) {
+    // At Collapse 6 there's no Collapse Table left to roll on — "revive
+    // with 1 HP" doesn't apply. Handbook v12 p54: this is Narrative Death.
     pushNotification(
       "hp-zero",
       "HP reached 0",
-      "Accept to apply +1 Collapse and revive with 1 HP, or cancel to clear without it.",
-      { collapse: 1, hp: 1 }
+      collapseMaxed
+        ? "Collapse is maxed. This is a Narrative Death (handbook p54)."
+        : "Accept to apply +1 Collapse and revive with 1 HP, or cancel to clear without it.",
+      collapseMaxed ? {} : { collapse: 1, hp: 1 }
     );
   }
   if (!hasBeenDownedBefore) {

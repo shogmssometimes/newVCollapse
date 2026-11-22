@@ -169,6 +169,18 @@ const CharMgmt: React.FC = () => {
           }
           deckState?: string | null
         }
+        // A file with neither a `slotData` object nor a legacy `deckState`
+        // string (e.g. `{}`, or any other JSON that happens to parse) isn't
+        // a character export at all — it used to fall through both restore
+        // branches silently, then still overwrite this slot's name/meta and
+        // report success, effectively wiping the slot. Reject it up front
+        // instead, before anything is written.
+        const hasValidSlotData = data != null && typeof data.slotData === 'object' && data.slotData !== null
+        const hasValidDeckState = typeof data.deckState === 'string' && data.deckState.length > 0
+        if (!hasValidSlotData && !hasValidDeckState) {
+          throw new Error('missing slotData')
+        }
+
         const name = typeof data.name === 'string' ? data.name : `Character ${slotNum}`
 
         const updatedMeta = [...slotMeta]

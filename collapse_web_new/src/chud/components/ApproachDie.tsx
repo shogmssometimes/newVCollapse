@@ -11,6 +11,14 @@ import { lockScroll, unlockScroll } from "../../utils/scrollLock"
 
 export type ApproachDieRollResult = ApproachRollResult
 
+// Each Method renders its own ApproachDie instance with fully independent
+// popup state, so nothing stops two different Methods' roll popups from
+// being open at once (e.g. rolling Finesse, then — without dismissing it —
+// rolling Guts). Track whichever instance's popup is currently open here,
+// module-wide, so opening one always closes any other first instead of
+// stacking two popups on screen together.
+let activePopupCloseRef: (() => void) | null = null
+
 const ROLL_ANIM_TICKS = 8
 const ROLL_ANIM_INTERVAL_MS = 60
 const ERROR_FLASH_MS = 420
@@ -310,8 +318,18 @@ export function ApproachDie({
     // identical dice/pending state rather than throwing it away, right up
     // until the roll is actually Confirmed (long-press the Total) or sent
     // to Margin — only THEN does the next roll-trigger start a fresh roll.
+    if (activePopupCloseRef === closePopup) activePopupCloseRef = null
     setPopupVisible(false)
   }, [])
+
+  // Opens THIS instance's popup, first closing whichever other Method's
+  // popup (if any) is currently open — otherwise two Methods rolled in a
+  // row would both stay visible, stacked on top of each other.
+  const openPopup = useCallback(() => {
+    if (activePopupCloseRef && activePopupCloseRef !== closePopup) activePopupCloseRef()
+    activePopupCloseRef = closePopup
+    setPopupVisible(true)
+  }, [closePopup])
 
   // The result popup stays open until the player dismisses it (tap outside
   // or the close button) — it never times out on its own. The popup is
@@ -337,6 +355,23 @@ export function ApproachDie({
     if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(ms)
   }
 
+  // Latest-value refs purely for the unmount cleanup below — an effect
+  // with `[]` deps only ever sees the closure from the very first render,
+  // so anything it reads about an in-progress roll has to come through a
+  // ref kept current on every render instead of a captured variable.
+  const onOverloadRef = useRef(onOverload)
+  onOverloadRef.current = onOverload
+  const onRefundEngramRef = useRef(onRefundEngram)
+  onRefundEngramRef.current = onRefundEngram
+  const pendingOverloadRef = useRef(pendingOverload)
+  pendingOverloadRef.current = pendingOverload
+  const availableAtRenderRef = useRef(available)
+  availableAtRenderRef.current = available
+  const ignoreOverloadSpendRef = useRef(ignoreOverloadSpend)
+  ignoreOverloadSpendRef.current = ignoreOverloadSpend
+  const engramStackRef = useRef(engramStack)
+  engramStackRef.current = engramStack
+
   useEffect(() => () => {
     if (rollAnimTimer.current !== null) window.clearInterval(rollAnimTimer.current)
     if (errorFlashTimer.current !== null) window.clearTimeout(errorFlashTimer.current)
@@ -348,6 +383,29 @@ export function ApproachDie({
     if (confirmHoldInterval.current !== null) window.clearInterval(confirmHoldInterval.current)
     if (scrollLockedRef.current) { scrollLockedRef.current = false; unlockScroll() }
     if (dieScrollLockedRef.current) { dieScrollLockedRef.current = false; unlockScroll() }
+    if (activePopupCloseRef === closePopup) activePopupCloseRef = null
+    // Leaving the HUD (navigating away, or a reload) mid-roll used to just
+    // drop everything silently: a pending Overload was never actually
+    // spent from its pool (so the die looked available again on return),
+    // and an already-activated Engram Stack's spent charges vanished for
+    // nothing (neither consumed for real nor given back). Resolve both for
+    // real right here instead — the Overload is spent as if Confirmed, and
+    // the Engram Stack's charges are refunded since the roll it was
+    // locked into never got Confirmed or sent to Margin.
+    if (!resolvedRef.current) {
+      if (onOverloadRef.current && pendingOverloadRef.current.size > 0 && !ignoreOverloadSpendRef.current) {
+        let baseCount = 0
+        let wardrobeCount = 0
+        pendingOverloadRef.current.forEach((index) => {
+          if (index >= availableAtRenderRef.current) wardrobeCount += 1
+          else baseCount += 1
+        })
+        onOverloadRef.current(baseCount, wardrobeCount)
+      }
+      if (engramStackRef.current && onRefundEngramRef.current) {
+        onRefundEngramRef.current(engramStackRef.current.id, engramStackRef.current.rolls.length)
+      }
+    }
   }, [])
 
   const flashError = () => {
@@ -375,7 +433,7 @@ export function ApproachDie({
     const rolled = onRoll(count)
     resolvedRef.current = false
     setResult(null)
-    setPopupVisible(true)
+    openPopup()
     setPendingOverload(new Set())
     setEngramStack(null)
     engramRollCacheRef.current = {}
@@ -506,7 +564,7 @@ export function ApproachDie({
       // to Margin) just reopens — the exact same dice, pending Overload,
       // and Engram Stack, rather than throwing them away for a fresh roll.
       if (result && !resolvedRef.current) {
-        setPopupVisible(true)
+        openPopup()
       } else {
         rollPool(poolMax)
       }
@@ -650,7 +708,12 @@ export function ApproachDie({
     if (noDiceMode || grit <= 0) return
     if (!spendGrit(1)) return
     setGrit((g) => Math.max(0, g - 1))
-    addSetRollRow(displayTotal, { name: status, effect: GRIT_STATUS_EFFECT[status] })
+    // On the Margin screen, marginBase (not displayTotal) is the current
+    // Total — displayTotal's dieMax still reads pendingOverload against
+    // whatever `result` is now, which after a Grit Reroll is a brand new
+    // dice array; the old Overloaded index just points at a different,
+    // unrelated die in it and would silently inflate this row's value.
+    addSetRollRow(marginBase ?? displayTotal, { name: status, effect: GRIT_STATUS_EFFECT[status] })
   }
   // Picking up a die previews doubling it, but only once confirmed with a
   // long-press (a plain tap would be too easy to trigger by accident while
@@ -1114,7 +1177,7 @@ export function ApproachDie({
         ))}
       </div>
 
-      {(rolling || result) && createPortal(
+      {(rolling || result) && popupVisible && createPortal(
         <div
           ref={popupRef}
           className="approach-die-popup"

@@ -195,8 +195,6 @@ export default function AagPage({
             <RestWidget
               storageKey={chudStateStorageKey}
               deckBuilderStorageKey={deckBuilderStorageKey}
-              core={core}
-              collapseModifiers={collapseModifiers}
             />
           }
           collapseModifiersWidget={

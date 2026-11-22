@@ -130,7 +130,8 @@ export function adjustHpCounter(delta: number, chudStateKey: string): void {
     const hpMax = computeDerived(core, modifiers).hp;
     const next = Math.min(hpMax, Math.max(0, current + delta));
     const hasBeenDownedBefore = parsed.hasBeenDownedBefore === true;
-    const nowDowned = queueHpZeroNotificationsIfNeeded(current, next, hasBeenDownedBefore);
+    const { collapse } = readGlobalMeters();
+    const nowDowned = queueHpZeroNotificationsIfNeeded(current, next, hasBeenDownedBefore, collapse >= METER_MAX);
     const json = JSON.stringify({
       ...parsed,
       hpCounter: next,

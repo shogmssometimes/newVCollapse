@@ -1,24 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import type { CollapseModifiers, CoreStats } from "../../types/chud";
-import { computeDerived, DEFAULT_COLLAPSE_MODIFIERS } from "../../domain/chudStats";
 import { isNoDiceMode, subscribeNoDiceMode } from "../../utils/noDiceMode";
-
-// Matches Chud.tsx's real pre-save default (an unset character has no Core
-// points yet) — falling back to DEFAULT_CORE's 3/2/2 here disagreed with
-// what a brand-new HUD actually starts at.
-const ZERO_CORE: CoreStats = { vigor: 0, inference: 0, personality: 0 };
 import {
   getNotificationsStorageKey,
   hasPendingNotification,
   pushNotification,
 } from "../../domain/notifications";
-import {
-  readGlobalMeters,
-  readHpCounter,
-  readCore,
-  readCollapseModifiers,
-  maxGritForCollapse,
-} from "../../utils/chudVanillaBridge";
+import { readGlobalMeters, maxGritForCollapse } from "../../utils/chudVanillaBridge";
 
 // Dig Deep / Full Rest, rendered at the bottom of the AAG page. Every Rest
 // effect is rolled up-front and queued as a notification — nothing applies
@@ -30,13 +17,9 @@ import {
 export function RestWidget({
   storageKey,
   deckBuilderStorageKey,
-  core,
-  collapseModifiers,
 }: {
   storageKey: string;
   deckBuilderStorageKey: string;
-  core?: CoreStats;
-  collapseModifiers?: CollapseModifiers;
 }) {
   const [digDeepPending, setDigDeepPending] = useState<boolean>(() =>
     typeof window !== "undefined" ? hasPendingNotification("dig-deep") : false
@@ -63,17 +46,20 @@ export function RestWidget({
     const d2 = 1 + Math.floor(Math.random() * 4);
     const lose = Math.max(d1, d2);
     const gain = Math.min(d1, d2);
-    // Max Grit is 6 - Collapse — show the Grit gain that will actually land,
-    // not the raw roll, so "accept" never silently falls short of the promise.
+    // Preview only — the actual cap (and the Grit this adds) is resolved
+    // fresh against live Grit/Collapse when the notification is accepted,
+    // not baked in here at press time (see gritGainRaw in notifications.ts
+    // — a Full Rest or another Dig Deep accepted first would otherwise make
+    // a precomputed amount stale).
     const { grit: currentGrit, collapse } = readGlobalMeters();
     const maxGrit = maxGritForCollapse(collapse);
-    const actualGain = Math.min(maxGrit, currentGrit + gain) - currentGrit;
-    const capNote = actualGain < gain ? ` (Grit capped at ${maxGrit} by Collapse)` : "";
+    const previewGain = Math.min(maxGrit, currentGrit + gain) - currentGrit;
+    const capNote = previewGain < gain ? ` (Grit capped at ${maxGrit} by Collapse)` : "";
     const created = pushNotification(
       "dig-deep",
       "Dig Deep",
-      `Rolled ${d1}, ${d2}. Accept to lose ${lose} HP and gain ${actualGain} Grit${capNote}.`,
-      { hp: -lose, grit: gain }
+      `Rolled ${d1}, ${d2}. Accept to lose ${lose} HP and gain up to ${gain} Grit${capNote}.`,
+      { hp: -lose, gritGainRaw: gain }
     );
     if (created) setDigDeepPending(true);
   }, []);
@@ -85,35 +71,35 @@ export function RestWidget({
     // p42) alongside HP, Engram charges, and Method dice. No Dice Mode (C5)
     // restores everything EXCEPT Grit — the player rerolls 1d6 themselves
     // at the table and sets it on the bar, so no Grit delta is attached.
-    const activeCore = core ?? readCore(storageKey) ?? ZERO_CORE;
-    const activeModifiers = collapseModifiers ?? readCollapseModifiers(storageKey) ?? DEFAULT_COLLAPSE_MODIFIERS;
-    const hpMax = computeDerived(activeCore, activeModifiers).hp;
-    const hpDelta = hpMax - readHpCounter(storageKey);
+    // HP and Grit are both resolved live at accept time (setHpToMax /
+    // gritSetRaw below) rather than as deltas baked in now — a Dig Deep or
+    // another notification accepted while this one sits pending would
+    // otherwise leave a stale precomputed delta that overshoots or
+    // undershoots the actual max/target.
     if (noDiceMode) {
       const created = pushNotification(
         "full-rest",
         "Full Rest",
         "Roll 1d6 and set Grit on the bar. Accept to restore HP to full, refill all Engram charges, refill all Ganbare! Charges, and reset Method dice.",
-        { hp: hpDelta, restoreOverload: true, fullEngramRestore: true }
+        { setHpToMax: true, restoreOverload: true, fullEngramRestore: true }
       );
       if (created) setFullRestPending(true);
       return;
     }
     const roll = 1 + Math.floor(Math.random() * 6);
-    const { grit: currentGrit, collapse } = readGlobalMeters();
+    const { collapse } = readGlobalMeters();
     const maxGrit = maxGritForCollapse(collapse);
     const targetGrit = Math.min(maxGrit, roll);
-    const gritDelta = targetGrit - currentGrit;
     const capNote = roll > maxGrit ? ` (max Grit is ${maxGrit} with current Collapse)` : "";
     const created = pushNotification(
       "full-rest",
       "Full Rest",
       `Rolled ${roll} for Grit${capNote}. Accept to set Grit to ${targetGrit}, restore HP to full, refill all Engram charges, refill all Ganbare! Charges, and reset Method dice.`,
-      { grit: gritDelta, hp: hpDelta, restoreOverload: true, fullEngramRestore: true },
+      { gritSetRaw: roll, setHpToMax: true, restoreOverload: true, fullEngramRestore: true },
       { roll: { die: 6, value: roll } }
     );
     if (created) setFullRestPending(true);
-  }, [core, storageKey, collapseModifiers, noDiceMode]);
+  }, [noDiceMode]);
 
   return (
     <div className="mods rest-widget">

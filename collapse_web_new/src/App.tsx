@@ -480,7 +480,7 @@ const HubLanding: React.FC<{
                   transition: "opacity 0.15s, border-color 0.15s",
                 '--card-index': index,
                 } as React.CSSProperties}
-                onClick={() => { if (!isCustom && !dragMovedRef.current) onNavigate(card.id); }}
+                onClick={() => { if (!dragMovedRef.current) onNavigate(card.id); }}
               >
                 <h2 style={{ margin: 0, fontSize: '1.6rem' }}>{card.title}</h2>
               </button>

@@ -80,11 +80,18 @@ export function setEngramCopies(storageKey: string, engramId: string, copies: nu
     // tap-to-charge gesture, never granted for free just by equipping.
     const prev = equipped[engramId]
     const prevCharges = prev?.charges ?? 0
+    const prevCopies = prev?.copies ?? 0
     const prevUsesLeft = prev?.usesLeft ?? safeCopies
+    // Added copies (safeCopies > prevCopies) bring their own uses with
+    // them — otherwise equipping Wing-It ×1 (used, usesLeft 0), then
+    // adding a second copy, left usesLeft clamped at min(0, 2) = 0 and the
+    // new copy's use was never actually granted. A decrease still just
+    // clamps down, same as before.
+    const addedCopies = Math.max(0, safeCopies - prevCopies)
     equipped[engramId] = {
       copies: safeCopies,
       charges: Math.min(prevCharges, safeCopies),
-      usesLeft: Math.min(prevUsesLeft, safeCopies),
+      usesLeft: Math.min(safeCopies, prevUsesLeft + addedCopies),
     }
   }
   writeEngramState(storageKey, { ...state, equipped })
@@ -166,12 +173,14 @@ export function spendAllEngramCharges(storageKey: string, engramId: string): num
   return amount
 }
 
-/** Full Rest: every equipped Engram's charges AND usesLeft refill to its
- * copies count — the only thing that restores spent uses. */
+/** Full Rest: every equipped Engram's usesLeft refills to its copies count
+ * — the only thing that restores spent uses. Charges reset to 0 (not
+ * preloaded to copies) — Full Rest hands uses back, it doesn't load the Q
+ * for the player; which Engrams get tapped up again is still their choice. */
 export function fullRestEngrams(storageKey: string): void {
   const state = readEngramState(storageKey)
   const equipped = Object.fromEntries(
-    Object.entries(state.equipped).map(([id, e]) => [id, { ...e, charges: e.copies, usesLeft: e.copies }])
+    Object.entries(state.equipped).map(([id, e]) => [id, { ...e, charges: 0, usesLeft: e.copies }])
   )
   writeEngramState(storageKey, { equipped })
 }

@@ -48,8 +48,8 @@ describe("addEngramCharge after spendAllEngramCharges", () => {
 
     fullRestEngrams(KEY);
     expect(readEngramState(KEY).equipped[ID].usesLeft).toBe(1);
-    expect(readEngramState(KEY).equipped[ID].charges).toBe(1); // Full Rest reloads charges too
-    addEngramCharge(KEY, ID); // at cap (1) already -> wraps to 0
+    // Full Rest hands the use back but doesn't preload the Q — charges
+    // reset to 0 so the player still chooses what to tap up.
     expect(readEngramState(KEY).equipped[ID].charges).toBe(0);
     addEngramCharge(KEY, ID); // can load back up to 1 now that usesLeft allows it
     expect(readEngramState(KEY).equipped[ID].charges).toBe(1);
@@ -66,5 +66,21 @@ describe("addEngramCharge after spendAllEngramCharges", () => {
     expect(state.usesLeft).toBe(2);
     addEngramCharge(KEY, ID); // wraps back to 0 since charges === usesLeft cap
     expect(readEngramState(KEY).equipped[ID].charges).toBe(0);
+  });
+
+  it("adding copies grants usesLeft for the added copies (regression: Wing-It x2 stuck at 0/2)", () => {
+    setEngramCopies(KEY, ID, 1);
+    addEngramCharge(KEY, ID);
+    spendAllEngramCharges(KEY, ID); // spend the single copy's only use
+    expect(readEngramState(KEY).equipped[ID].usesLeft).toBe(0);
+
+    setEngramCopies(KEY, ID, 2); // equip a second copy
+    const state = readEngramState(KEY).equipped[ID];
+    expect(state.copies).toBe(2);
+    expect(state.usesLeft).toBe(1); // the added copy brings its own use
+
+    // A decrease still just clamps down, it doesn't grant anything.
+    setEngramCopies(KEY, ID, 1);
+    expect(readEngramState(KEY).equipped[ID].usesLeft).toBe(1);
   });
 });

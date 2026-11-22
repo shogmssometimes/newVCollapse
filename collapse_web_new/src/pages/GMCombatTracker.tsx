@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { rollApproachDice, rollFlatDice, computeFumbleWounds, DIE_LADDER, type DieSides } from "../domain/approachDice";
+import { isNoDiceMode, subscribeNoDiceMode } from "../utils/noDiceMode";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ type Combatant = {
   personality?: number; // optional Readiness tie-break
   overEncumbered?: boolean; // players: forces them last at Start Fight
   readinessResult?: number; // Start Fight's rolled (enemy) or GM-typed (player) Readiness result
-  spentMethods: Partial<Record<MethodKey, boolean>>; // No Dice Mode (GM): tapped-spent pips, reset at Start Fight
+  spentMethods: Partial<Record<MethodKey, boolean[]>>; // No Dice Mode (GM): one entry per die, tapped-spent pips, reset at Start Fight
 };
 
 // Modifiers are always applied on top of the stored base, never written back
@@ -1395,6 +1396,8 @@ type RunCardProps = {
 
 const RunCard: React.FC<RunCardProps> = ({ c, index, total, onChange, onPrev, onNext, onGoTo, onMoveUp, onMoveDown }) => {
   const [rollMethod, setRollMethod] = useState<MethodKey | null>(null);
+  const [noDice, setNoDice] = useState(() => isNoDiceMode());
+  useEffect(() => subscribeNoDiceMode(() => setNoDice(isNoDiceMode())), []);
   const cardRef = useRef<HTMLDivElement>(null);
   const onPrevRef = useRef(onPrev);
   const onNextRef = useRef(onNext);
@@ -1441,9 +1444,26 @@ const RunCard: React.FC<RunCardProps> = ({ c, index, total, onChange, onPrev, on
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
-          <div style={{ fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.13em", color: "var(--muted)" }}>
-            {index + 1} / {total}
-            {typeof c.readinessResult === "number" && <span> · RDY roll {c.readinessResult}</span>}
+          <div style={{ fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.13em", color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>
+            <span>{index + 1} / {total}</span>
+            {noDice && c.type === "enemy" ? (
+              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                · RDY
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={c.readinessResult ?? ""}
+                  placeholder="Table roll"
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    onChange({ ...c, readinessResult: raw.trim() === "" ? undefined : Number(raw) });
+                  }}
+                  style={{ ...INPUT, fontSize: "16px", width: 70, padding: "0.15rem 0.35rem" }}
+                />
+              </span>
+            ) : (
+              typeof c.readinessResult === "number" && <span> · RDY roll {c.readinessResult}</span>
+            )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {c.avatarUrl ? (
@@ -1512,26 +1532,67 @@ const RunCard: React.FC<RunCardProps> = ({ c, index, total, onChange, onPrev, on
             />
           </div>
           <div>
-            <div style={{ fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.13em", color: "var(--muted)", marginBottom: 6 }}>Methods — tap to roll</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
-              {METHOD_KEYS.map((k) => {
-                const n = effMethodDice(c, k);
-                return (
-                  <button
-                    key={k}
-                    disabled={n <= 0}
-                    onClick={() => setRollMethod(k)}
-                    style={{ background: "rgba(99,160,255,0.08)", border: "1px solid rgba(99,160,255,0.22)", borderRadius: 8, color: n > 0 ? "var(--accent)" : "rgba(255,255,255,0.25)", padding: "0.5rem 0.3rem", fontSize: "0.78rem", cursor: n > 0 ? "pointer" : "default" }}
-                  >
-                    {METHOD_LABELS[k]}<br />
-                    <span style={{ fontSize: "0.68rem", opacity: 0.8 }}>{n}d10</span>
-                  </button>
-                );
-              })}
+            <div style={{ fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.13em", color: "var(--muted)", marginBottom: 6 }}>
+              {noDice ? "Methods — tap a die to mark it spent" : "Methods — tap to roll"}
             </div>
-            {(typeof c.fumbleNumber === "number" || (c.modifiers?.totalAttackDefense ?? 0) !== 0 || (c.modifiers?.totalAll ?? 0) !== 0) && (
+            {noDice ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                {METHOD_KEYS.map((k) => {
+                  const n = effMethodDice(c, k);
+                  const spent = c.spentMethods?.[k] ?? [];
+                  return (
+                    <div key={k} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                      <span style={{ fontSize: "0.72rem", color: n > 0 ? "var(--text)" : "rgba(255,255,255,0.3)" }}>{METHOD_LABELS[k]}</span>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        {n <= 0 && <span style={{ fontSize: "0.68rem", color: "rgba(255,255,255,0.25)" }}>—</span>}
+                        {Array.from({ length: n }, (_, i) => {
+                          const isSpent = !!spent[i];
+                          return (
+                            <button
+                              key={i}
+                              onClick={() => {
+                                const next = Array.from({ length: n }, (_, j) => !!spent[j]);
+                                next[i] = !next[i];
+                                onChange({ ...c, spentMethods: { ...c.spentMethods, [k]: next } });
+                              }}
+                              aria-label={`${METHOD_LABELS[k]} die ${i + 1}${isSpent ? " (spent)" : ""}`}
+                              style={{
+                                width: 22, height: 22, borderRadius: "50%",
+                                border: `1px solid ${isSpent ? "rgba(255,255,255,0.15)" : "rgba(99,160,255,0.45)"}`,
+                                background: isSpent ? "rgba(255,255,255,0.04)" : "rgba(99,160,255,0.2)",
+                                color: isSpent ? "rgba(255,255,255,0.25)" : "var(--accent)",
+                                fontSize: "0.62rem", padding: 0, cursor: "pointer",
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                {METHOD_KEYS.map((k) => {
+                  const n = effMethodDice(c, k);
+                  return (
+                    <button
+                      key={k}
+                      disabled={n <= 0}
+                      onClick={() => setRollMethod(k)}
+                      style={{ background: "rgba(99,160,255,0.08)", border: "1px solid rgba(99,160,255,0.22)", borderRadius: 8, color: n > 0 ? "var(--accent)" : "rgba(255,255,255,0.25)", padding: "0.5rem 0.3rem", fontSize: "0.78rem", cursor: n > 0 ? "pointer" : "default" }}
+                    >
+                      {METHOD_LABELS[k]}<br />
+                      <span style={{ fontSize: "0.68rem", opacity: 0.8 }}>{n}d10</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {(typeof c.fumbleNumber === "number" || (c.modifiers?.wt ?? 0) !== 0 || (c.modifiers?.totalAttackDefense ?? 0) !== 0 || (c.modifiers?.totalAll ?? 0) !== 0) && (
               <div style={{ fontSize: "0.68rem", color: "var(--muted)", marginTop: 6 }}>
                 {typeof c.fumbleNumber === "number" ? `Fumble ${c.fumbleNumber} · ` : ""}
+                {noDice ? `WT ${effWt(c)} · ` : ""}
                 {(c.modifiers?.totalAttackDefense ?? 0) !== 0 ? `Attack/Defense ${c.modifiers!.totalAttackDefense! > 0 ? "+" : "−"}${Math.abs(c.modifiers!.totalAttackDefense!)} · ` : ""}
                 {(c.modifiers?.totalAll ?? 0) !== 0 ? `Every Roll ${c.modifiers!.totalAll! > 0 ? "+" : "−"}${Math.abs(c.modifiers!.totalAll!)}` : ""}
               </div>
@@ -1915,6 +1976,8 @@ export default function GMCombatTracker() {
   const [mode, setMode] = useState<"edit" | "run">(() => loadRunState().mode);
   const [runIndex, setRunIndex] = useState(() => loadRunState().runIndex);
   const [round, setRound] = useState(() => loadRunState().round);
+  const [noDice, setNoDice] = useState(() => isNoDiceMode());
+  useEffect(() => subscribeNoDiceMode(() => setNoDice(isNoDiceMode())), []);
   const [showScenarios, setShowScenarios] = useState(false);
   const [showParties, setShowParties] = useState(false);
   const [partySelected, setPartySelected] = useState<Set<string>>(new Set());
@@ -1993,11 +2056,14 @@ export default function GMCombatTracker() {
   // fight, never on a plain Edit↔Run toggle (that used to reset every time,
   // which lost mid-fight HP/order whenever the GM dipped into Edit).
   const startFight = () => {
+    const noDice = isNoDiceMode();
     setAppState((prev) => {
       const rolled = prev.combatants.map((c) => {
         if (c.type === "enemy") {
-          const roll = rollFlatDice(1, 10)[0] + effReadiness(c);
-          return { ...c, readinessResult: roll, hp: effMaxHp(c), spentMethods: {} };
+          // No Dice Mode: nothing is rolled — the GM types each enemy's
+          // table-rolled Readiness into the same field players already use.
+          const readinessResult = noDice ? c.readinessResult : rollFlatDice(1, 10)[0] + effReadiness(c);
+          return { ...c, readinessResult, hp: effMaxHp(c), spentMethods: {} };
         }
         return { ...c, spentMethods: {} };
       });
@@ -2136,7 +2202,9 @@ export default function GMCombatTracker() {
               {mode === "edit" && (
                 <button
                   onClick={startFight}
-                  title="Rolls enemy Readiness, sorts the order, and resets HP — only ever run this when a fight is actually starting"
+                  title={noDice
+                    ? "No Dice Mode: rolls nothing — sorts by each combatant's typed Readiness result and resets HP"
+                    : "Rolls enemy Readiness, sorts the order, and resets HP — only ever run this when a fight is actually starting"}
                   style={{ background: "rgba(255,210,99,0.12)", border: "1px solid rgba(255,210,99,0.35)", borderRadius: 6, color: "#e9c46a", padding: "0.4rem 0.75rem", fontSize: "0.82rem", cursor: "pointer" }}
                 >
                   Start Fight

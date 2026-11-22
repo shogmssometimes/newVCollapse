@@ -4,6 +4,7 @@ import GMCombatTracker from "./pages/GMCombatTracker";
 import { Card } from "./domain/decks/DeckEngine";
 import { parseHashRoute } from "./utils/routing";
 import { DiceDock, DiceIcon, DICE_OPEN_EVENT } from "./components/DiceRoller";
+import { isNoDiceMode, setNoDiceMode, subscribeNoDiceMode } from "./utils/noDiceMode";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,7 +30,8 @@ const GMShell: React.FC<{
   onBack?: () => void;
   children: React.ReactNode;
   subtitle?: string;
-}> = ({ onBack, children, subtitle }) => (
+  hideDice?: boolean;
+}> = ({ onBack, children, subtitle, hideDice }) => (
   <div className="gm-shell" style={{ minHeight: "100vh", background: "var(--bg-dark)" }}>
     <DiceDock />
     <header className="topbar" style={{ position: "relative" }}>
@@ -38,14 +40,16 @@ const GMShell: React.FC<{
           <span aria-hidden="true">←</span>
         </button>
       )}
-      <button
-        className="ghost-btn ghost-btn-icon"
-        onClick={() => window.dispatchEvent(new Event(DICE_OPEN_EVENT))}
-        aria-label="Open dice roller"
-        style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", color: "rgba(255,255,255,0.65)" }}
-      >
-        <DiceIcon size={18} />
-      </button>
+      {!hideDice && (
+        <button
+          className="ghost-btn ghost-btn-icon"
+          onClick={() => window.dispatchEvent(new Event(DICE_OPEN_EVENT))}
+          aria-label="Open dice roller"
+          style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", color: "rgba(255,255,255,0.65)" }}
+        >
+          <DiceIcon size={18} />
+        </button>
+      )}
       <div className="topbar-title">
         {subtitle !== "" && <strong>{subtitle ?? "GM Tools"}</strong>}
       </div>
@@ -53,6 +57,47 @@ const GMShell: React.FC<{
     {children}
   </div>
 );
+
+// Per-device toggle, shared verbatim with the player app (same localStorage
+// key) — see src/utils/noDiceMode.ts and src/pages/Profile.tsx. Reachable
+// here too since the GM app has no Profile page of its own.
+const NoDiceModeToggle: React.FC = () => {
+  const [on, setOn] = useState(() => isNoDiceMode());
+  useEffect(() => subscribeNoDiceMode(() => setOn(isNoDiceMode())), []);
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={() => setNoDiceMode(!on)}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 10,
+        width: "100%",
+        maxWidth: 420,
+        margin: "0 auto 1rem",
+        border: `1px solid ${on ? "var(--accent)" : "rgba(255,255,255,0.12)"}`,
+        background: on ? "rgba(15,246,255,0.08)" : "rgba(255,255,255,0.03)",
+        borderRadius: 8,
+        padding: "0.5rem 0.85rem",
+        color: "#f8f9fa",
+        cursor: "pointer",
+      }}
+    >
+      <span style={{ fontSize: "0.82rem", textAlign: "left" }}>
+        No Dice Mode
+        <span style={{ display: "block", fontSize: "0.68rem", color: "var(--muted)" }}>
+          The tracker becomes paper: GM types Readiness/HP, taps dice spent, no rollers.
+        </span>
+      </span>
+      <span style={{ flexShrink: 0, width: 40, height: 22, borderRadius: 999, border: `1px solid ${on ? "var(--accent)" : "rgba(255,255,255,0.25)"}`, background: on ? "rgba(15,246,255,0.25)" : "rgba(255,255,255,0.06)", position: "relative" }}>
+        <span style={{ position: "absolute", top: 1, left: on ? 19 : 1, width: 18, height: 18, borderRadius: "50%", background: on ? "var(--accent)" : "rgba(255,255,255,0.5)", transition: "left 0.15s" }} />
+      </span>
+    </button>
+  );
+};
 
 // ── Intro banner ─────────────────────────────────────────────────────────────
 
@@ -87,6 +132,7 @@ const GMHub: React.FC<{ onNavigate: (route: GMRoute) => void }> = ({ onNavigate 
             ← Switch to Player
           </a>
         </div>
+        <NoDiceModeToggle />
         <div
           style={{
             display: "grid",
@@ -171,6 +217,8 @@ const GM_EXPORT_PREFIX = "collapse-gm-deck";
 
 export default function GMApp() {
   const [route, setRoute] = useState<GMRoute>(() => deriveGMRoute());
+  const [noDice, setNoDice] = useState(() => isNoDiceMode());
+  useEffect(() => subscribeNoDiceMode(() => setNoDice(isNoDiceMode())), []);
 
   useEffect(() => {
     const syncRoute = () => setRoute(deriveGMRoute());
@@ -265,7 +313,7 @@ export default function GMApp() {
 
   if (route === "combat") {
     return (
-      <GMShell onBack={() => setRoute("hub")} subtitle="">
+      <GMShell onBack={() => setRoute("hub")} subtitle="" hideDice={noDice}>
         <GMCombatTracker />
       </GMShell>
     );

@@ -5,9 +5,13 @@ import { APPROACH_LABELS } from "../../domain/coreApproachMap";
 const METHOD_FIELDS: Array<keyof ApproachStats> = ["force", "finesse", "guts", "logic", "show", "tell"];
 
 // One number field bound to a single CollapseModifiers key (or a Method's
-// methodDice entry via onMethodChange below) — a plain number input, since
-// every modifier is a signed ± value with no cap of its own (the derived
-// stat it feeds is what gets floored, in domain/chudStats.ts).
+// methodDice entry via onMethodChange below) — a plain number input plus
+// -/+ steppers, since every modifier is a signed ± value with no cap of
+// its own (the derived stat it feeds is what gets floored, in
+// domain/chudStats.ts). The steppers exist because iOS's numeric keypad
+// has no minus key and almost every Collapse result is negative — typing
+// still works (desktop, Android), but iPhone needs the buttons to go
+// negative at all.
 function ModifierField({
   label,
   value,
@@ -17,19 +21,38 @@ function ModifierField({
   value: number;
   onChange: (next: number) => void;
 }) {
+  const safe = Number.isFinite(value) ? value : 0;
   return (
     <label className="collapse-mod-field">
       <span>{label}</span>
-      <input
-        type="number"
-        inputMode="numeric"
-        step={1}
-        value={Number.isFinite(value) ? value : 0}
-        onChange={(e) => {
-          const n = Math.round(Number(e.target.value));
-          onChange(Number.isFinite(n) ? n : 0);
-        }}
-      />
+      <div className="collapse-mod-field-row">
+        <button
+          type="button"
+          className="collapse-mod-stepper"
+          aria-label={`Decrease ${label}`}
+          onClick={() => onChange(safe - 1)}
+        >
+          −
+        </button>
+        <input
+          type="number"
+          inputMode="numeric"
+          step={1}
+          value={safe}
+          onChange={(e) => {
+            const n = Math.round(Number(e.target.value));
+            onChange(Number.isFinite(n) ? n : 0);
+          }}
+        />
+        <button
+          type="button"
+          className="collapse-mod-stepper"
+          aria-label={`Increase ${label}`}
+          onClick={() => onChange(safe + 1)}
+        >
+          +
+        </button>
+      </div>
     </label>
   );
 }

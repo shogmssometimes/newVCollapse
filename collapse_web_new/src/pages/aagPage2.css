@@ -803,6 +803,44 @@
   color: #f8fafc;
   width: 100%;
   box-sizing: border-box;
+  text-align: center;
+  /* Spin-button arrows duplicate the custom -/+ steppers; hide them. */
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.aag-page2 .collapse-mod-field input::-webkit-outer-spin-button,
+.aag-page2 .collapse-mod-field input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.aag-page2 .collapse-mod-field-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.aag-page2 .collapse-mod-field-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.aag-page2 .collapse-mod-stepper {
+  flex: 0 0 auto;
+  width: 32px;
+  min-height: 32px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  font-size: 1.1rem;
+  line-height: 1;
+  touch-action: manipulation;
+}
+
+.aag-page2 .collapse-mod-stepper:active {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .aag-page2 .collapse-results-list {

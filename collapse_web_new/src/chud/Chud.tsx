@@ -426,9 +426,11 @@ export default function Chud() {
           <HPPanel
             hpCounter={hpCounter}
             hpMax={hpMax}
+            hpMaxModifier={collapseModifiers.maxHp}
             collapseLocked={collapseLocked}
             onHpIncr={() => applyHpDelta(1)}
             onHpDecr={() => applyHpDelta(-1)}
+            onHpSet={(next) => applyHpDelta(next - hpCounter)}
             ganbareRemaining={ganbareRemaining}
             ganbareMax={ganbareMax}
             onSpendGanbare={spendGanbareCharge}

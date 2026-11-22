@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useGesture } from "../../hooks/useGesture";
 import { GearPanel } from "./GearPanel";
 import { EngramPanel } from "./EngramPanel";
@@ -12,9 +12,11 @@ import type { EngramManagerState } from "../../utils/engramState";
 export function HPPanel({
   hpCounter,
   hpMax,
+  hpMaxModifier = 0,
   collapseLocked,
   onHpIncr,
   onHpDecr,
+  onHpSet,
   ganbareRemaining,
   ganbareMax,
   onSpendGanbare,
@@ -29,9 +31,13 @@ export function HPPanel({
 }: {
   hpCounter: number;
   hpMax: number;
+  /** Permanent Collapse Table ± adjustment already baked into hpMax, shown as a "(±N)" badge next to it. */
+  hpMaxModifier?: number;
   collapseLocked: boolean;
   onHpIncr: () => void;
   onHpDecr: () => void;
+  /** Types a new HP value directly (tap the HP number) — clamped to [0, hpMax] by the caller. */
+  onHpSet: (next: number) => void;
   /** Ganbare! Charges (the friend-assistance economy) — rendered to the right of HP. */
   ganbareRemaining: number;
   ganbareMax: number;
@@ -52,6 +58,17 @@ export function HPPanel({
   // deliberately slower/rarer to avoid accidental taps undoing damage).
   const hpHandlers = useGesture(onHpDecr, onHpIncr);
   const hpFillPct = Math.max(0, Math.min(100, (hpCounter / hpMax) * 100));
+  // Tapping the HP number itself (instead of the rest of the card) opens a
+  // direct-entry field — a separate gesture from the card's own tap/hold,
+  // so stopPropagation on this span keeps the two from firing together.
+  const [editingHp, setEditingHp] = useState(false);
+  const [hpInput, setHpInput] = useState("");
+
+  const commitHpInput = () => {
+    const n = Math.round(Number(hpInput));
+    if (Number.isFinite(n)) onHpSet(Math.min(Math.max(n, 0), hpMax));
+    setEditingHp(false);
+  };
 
   return (
     <div className="mods">
@@ -66,7 +83,42 @@ export function HPPanel({
         >
           <div className="stat-label">
             <strong>HP</strong>
-            <span>{hpCounter} / {hpMax}</span>
+            {editingHp ? (
+              <input
+                type="number"
+                inputMode="numeric"
+                className="hp-direct-input"
+                autoFocus
+                defaultValue={hpCounter}
+                min={0}
+                max={hpMax}
+                onChange={(e) => setHpInput(e.target.value)}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+                onBlur={commitHpInput}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitHpInput();
+                  if (e.key === "Escape") setEditingHp(false);
+                }}
+              />
+            ) : (
+              <span
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (collapseLocked) return;
+                  setHpInput(String(hpCounter));
+                  setEditingHp(true);
+                }}
+              >
+                {hpCounter} / {hpMax}
+                {hpMaxModifier !== 0 && (
+                  <span className="hp-max-modifier">
+                    {" "}({hpMaxModifier > 0 ? "+" : "−"}{Math.abs(hpMaxModifier)})
+                  </span>
+                )}
+              </span>
+            )}
           </div>
           <div
             className="stat-bar"

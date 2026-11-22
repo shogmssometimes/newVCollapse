@@ -327,7 +327,8 @@ function createStyles() {
     .status-roll-value-wrap { flex: 22 1 0; display: flex; align-items: center; justify-content: center; gap: 4px; position: relative; }
     .status-roll-value-btn { width: 32px; height: 32px; flex-shrink: 0; border-radius: 6px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.07); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .status-roll-value-btn:active { transform: scale(0.94); }
-    .status-roll-value { min-width: 20px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 800; color: #6ac7ff; font-size: 12px; }
+    .status-roll-value { min-width: 20px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 800; color: #6ac7ff; font-size: 12px; cursor: pointer; }
+    .status-roll-value-input { width: 2.6em; min-width: 20px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 800; color: #6ac7ff; font-size: 16px; background: rgba(0,0,0,0.3); border: 1px solid rgba(106,199,255,0.5); border-radius: 4px; }
     .status-roll-clear { flex: 8.5 1 0; min-width: 26px; border-radius: 8px; border: 1px solid rgba(239,68,68,0.4); background: rgba(239,68,68,0.1); color: #f87171; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
     .status-roll-clear-progress { position: absolute; inset: 0; background: rgba(239,68,68,0.4); width: 0%; pointer-events: none; }
     .status-roll-clear-icon { position: relative; z-index: 1; }
@@ -686,6 +687,21 @@ function buildStatusRollsPanel() {
       return { approach }
     } catch { return { approach: {} } }
   }
+  // Mirrors domain/chudStats.ts's DEFAULT_COLLAPSE_MODIFIERS/withCollapseModifiers.
+  // Duplicated here for the same reason as STAT_AND_METHOD_MAX above — this
+  // file isn't bundled by Vite and can't import the TS domain layer.
+  const readCollapseModifiers = () => {
+    try {
+      const s = JSON.parse(localStorage.getItem(CHUD_STATE_KEY) || '{}')
+      const m = s?.collapseModifiers && typeof s.collapseModifiers === 'object' ? s.collapseModifiers : {}
+      const methodDice = m.methodDice && typeof m.methodDice === 'object' ? m.methodDice : {}
+      return {
+        totalAll: Number(m.totalAll) || 0,
+        totalAttackDefense: Number(m.totalAttackDefense) || 0,
+        methodDice,
+      }
+    } catch { return { totalAll: 0, totalAttackDefense: 0, methodDice: {} } }
+  }
   // Mirrors domain/wardrobeBonus.ts: sum each Wardrobe row's "+N" Quality
   // onto the Approach it's assigned to. A Save is an Approach Roll, so these
   // bonus dice count toward it the same as a normal roll.
@@ -872,13 +888,15 @@ function buildStatusRollsPanel() {
       const grid = document.createElement('div')
       grid.className = 'status-roll-save-approach-grid'
       const { approach } = readApproachState()
+      const { methodDice } = readCollapseModifiers()
       APPROACH_LABELS.forEach(([key, label]) => {
-        const base = Number(approach?.[key]) || 0
+        const base = Math.max(0, (Number(approach?.[key]) || 0) + (Number(methodDice?.[key]) || 0))
         const { bonus } = readWardrobeBonus(key)
-        // Picker shows the base (Core-distributed) rating only — the
-        // Overload-spendable pool size. Wardrobe is a separate add-on that
-        // always rolls but never appears as part of this number, mirroring
-        // ApproachDie.tsx/ApproachPanel.tsx's base-only pool.
+        // Picker shows the base (Core-distributed + Collapse-modified)
+        // rating only — the Overload-spendable pool size. Wardrobe is a
+        // separate add-on that always rolls but never appears as part of
+        // this number, mirroring ApproachDie.tsx/ApproachPanel.tsx's
+        // base-only pool.
         const rating = Math.min(STAT_AND_METHOD_MAX, base)
         const btn = document.createElement('button')
         btn.className = 'status-roll-save-approach-btn'
@@ -897,7 +915,8 @@ function buildStatusRollsPanel() {
       body.innerHTML = ''
 
       const { approach } = readApproachState()
-      const base = Number(approach?.[field]) || 0
+      const { methodDice, totalAll } = readCollapseModifiers()
+      const base = Math.max(0, (Number(approach?.[field]) || 0) + (Number(methodDice?.[field]) || 0))
       const { bonus: wardrobeBonus, items: wardrobeItems } = readWardrobeBonus(field)
       const rating = Math.min(STAT_AND_METHOD_MAX, base)
       let baseSpent = readOverloadSpent(field)
@@ -994,11 +1013,13 @@ function buildStatusRollsPanel() {
       const effectiveValue = (value, index) => (overloadedSet.has(index) ? value * 2 : value)
 
       // Total is the single highest effective die, never a sum — see
-      // domain/approachDice.ts.
-      const currentTotal = () => {
+      // domain/approachDice.ts. The Collapse "every roll" modifier (if any)
+      // is added automatically, same as the React Method roller.
+      const rawDieTotal = () => {
         if (!dice || dice.length === 0) return 0
         return Math.max(...dice.map((value, index) => effectiveValue(value, index)))
       }
+      const currentTotal = () => rawDieTotal() + totalAll
 
       const renderDiceChips = () => {
         diceWrap.innerHTML = ''
@@ -1048,7 +1069,9 @@ function buildStatusRollsPanel() {
         })
         const total = document.createElement('div')
         total.className = 'status-roll-save-total'
-        total.textContent = `Total: ${currentTotal()}`
+        total.textContent = totalAll !== 0
+          ? `Total: ${currentTotal()} (${rawDieTotal()} die ${totalAll > 0 ? '+' : '−'} ${Math.abs(totalAll)} Collapse)`
+          : `Total: ${currentTotal()}`
         diceWrap.appendChild(total)
         poolHint.textContent = `Overload pool remaining: ${baseAvailable}/${rating} base${wardrobeBonus > 0 ? `, ${wardrobeAvailable}/${wardrobeBonus} Wardrobe` : ''}`
       }
@@ -1297,6 +1320,35 @@ function buildStatusRollsPanel() {
       const val = document.createElement('span')
       val.className = 'status-roll-value'
       val.textContent = String(row.roll)
+      val.setAttribute('data-touch-blocker-ignore', '')
+      val.title = 'Tap to type the value directly'
+      // Tapping the value swaps it for a direct-entry number field (same
+      // idea as the HUD HP card) — lets a player type what they rolled at
+      // the table instead of stepping -/+ one at a time.
+      val.addEventListener('click', () => {
+        const input = document.createElement('input')
+        input.type = 'number'
+        input.inputMode = 'numeric'
+        input.className = 'status-roll-value-input'
+        input.min = '0'
+        input.max = String(STATUS_ROLL_MAX)
+        input.value = String(row.roll)
+        input.setAttribute('data-touch-blocker-ignore', '')
+        const commit = () => {
+          row.roll = clampStatusRoll(Math.round(Number(input.value)))
+          val.textContent = String(row.roll)
+          persist()
+          if (input.parentNode) input.replaceWith(val)
+        }
+        input.addEventListener('blur', commit)
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') input.blur()
+          if (e.key === 'Escape') { if (input.parentNode) input.replaceWith(val) }
+        })
+        val.replaceWith(input)
+        input.focus()
+        input.select()
+      })
       const plus = document.createElement('button')
       plus.className = 'status-roll-value-btn'
       plus.textContent = '+'

@@ -53,7 +53,7 @@ describe("queueHpZeroNotificationsIfNeeded", () => {
     queueHpZeroNotificationsIfNeeded(1, 0, true, true);
     const n = listNotifications().find((item) => item.kind === "hp-zero");
     expect(n).toBeDefined();
-    expect(n!.effect).toEqual({});
+    expect(n!.effect).toEqual({ narrativeDeath: true });
     expect(n!.detail).toMatch(/Narrative Death/i);
     expect(n!.detail).not.toMatch(/1 HP/i);
   });

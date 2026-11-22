@@ -174,8 +174,16 @@ const CharMgmt: React.FC = () => {
         // a character export at all — it used to fall through both restore
         // branches silently, then still overwrite this slot's name/meta and
         // report success, effectively wiping the slot. Reject it up front
-        // instead, before anything is written.
-        const hasValidSlotData = data != null && typeof data.slotData === 'object' && data.slotData !== null
+        // instead, before anything is written. An empty `slotData` object
+        // (`{}`) or an array (`[]` — still `typeof === 'object'`) passes a
+        // bare non-null-object check but carries nothing to restore either,
+        // so reject those too.
+        const hasValidSlotData =
+          data != null &&
+          typeof data.slotData === 'object' &&
+          data.slotData !== null &&
+          !Array.isArray(data.slotData) &&
+          Object.keys(data.slotData).length > 0
         const hasValidDeckState = typeof data.deckState === 'string' && data.deckState.length > 0
         if (!hasValidSlotData && !hasValidDeckState) {
           throw new Error('missing slotData')
@@ -197,11 +205,66 @@ const CharMgmt: React.FC = () => {
           else localStorage.removeItem(key)
         }
 
+        // A corrupt or hand-edited chudState string can still be valid JSON
+        // but carry NaN/non-finite values for fields the HUD assumes are
+        // real numbers (e.g. Readiness, Capacity in collapseModifiers) —
+        // JSON itself can't even encode NaN (JSON.stringify drops it to
+        // `null`), so this only happens via a hand-edited file, but it's
+        // cheap to guard against importing one. Invalid chudState is
+        // dropped (slot keeps no HUD state) rather than failing the whole
+        // import, since the rest of the character (deck, gear, etc.) may
+        // still be perfectly good.
+        const isFiniteNumber = (v: unknown) => typeof v === 'number' && Number.isFinite(v)
+        const isValidChudState = (raw: string): boolean => {
+          try {
+            const parsed = JSON.parse(raw) as {
+              hpCounter?: unknown
+              core?: { vigor?: unknown; inference?: unknown; personality?: unknown }
+              collapseModifiers?: Record<string, unknown>
+            }
+            if (parsed.hpCounter !== undefined && !isFiniteNumber(parsed.hpCounter)) return false
+            if (parsed.core) {
+              const { vigor, inference, personality } = parsed.core
+              if (
+                (vigor !== undefined && !isFiniteNumber(vigor)) ||
+                (inference !== undefined && !isFiniteNumber(inference)) ||
+                (personality !== undefined && !isFiniteNumber(personality))
+              ) {
+                return false
+              }
+            }
+            if (parsed.collapseModifiers) {
+              const numericFields = [
+                'maxHp',
+                'readiness',
+                'inventorySlots',
+                'capacity',
+                'ganbareCharges',
+                'wt',
+                'totalAttackDefense',
+                'totalAll',
+              ] as const
+              for (const field of numericFields) {
+                const v = parsed.collapseModifiers[field]
+                if (v !== undefined && !isFiniteNumber(v)) return false
+              }
+            }
+            return true
+          } catch {
+            return false
+          }
+        }
+
         if (data.slotData) {
           restoreKey(deckBuilderKey(slotNum), data.slotData.deckBuilder)
           restoreKey(gearSlotsKey(slotNum), data.slotData.gearSlots)
           restoreKey(wardrobeKey(slotNum), data.slotData.wardrobe)
-          restoreKey(chudStateKey(slotNum), data.slotData.chudState)
+          restoreKey(
+            chudStateKey(slotNum),
+            typeof data.slotData.chudState === 'string' && isValidChudState(data.slotData.chudState)
+              ? data.slotData.chudState
+              : undefined
+          )
           restoreKey(notesKey(slotNum), data.slotData.notes)
           restoreKey(profileKey(slotNum), data.slotData.profile)
           restoreKey(csmatrixKey(slotNum), data.slotData.csmatrix)

@@ -19,6 +19,66 @@ export type ApproachDieRollResult = ApproachRollResult
 // stacking two popups on screen together.
 let activePopupCloseRef: (() => void) | null = null
 
+// An unresolved roll (dice shown, any pending Overload, any activated
+// Engram Stack) used to live only in this component's React state — fine
+// for an in-page unmount, but the HUD lives in an <iframe> whose whole
+// document (and JS realm) is torn down and recreated on route change, not
+// just this one component. By the time any unmount cleanup *could* run,
+// the navigation may already have discarded the frame, so the pending
+// Overload/Engram Stack were silently lost (never spent, never refunded)
+// and the next roll came up fresh — a free reroll. Mirror the unresolved
+// roll out to localStorage on every change instead, scoped per-Method
+// (by its display label, which is unique and stable) and per character
+// slot, and restore it on mount. Cleared once the roll is actually
+// Confirmed/sent to Margin — from that point everything it represents is
+// already durably persisted elsewhere (the spent Overload pool, the
+// consumed Engram charges), so there's nothing left worth surviving a
+// reload.
+function currentChudSlot(): number {
+  try {
+    const n = parseInt(new URLSearchParams(window.location.search).get("slot") ?? "1", 10)
+    return Number.isFinite(n) && n > 0 ? n : 1
+  } catch {
+    return 1
+  }
+}
+
+type PersistedRoll = {
+  result: ApproachDieRollResult
+  pendingOverload: number[]
+  engramStack: { id: string; name: string; rolls: number[] } | null
+}
+
+function rollPersistKey(label: string): string {
+  return `chud.approachRoll.v1.slot${currentChudSlot()}.${label}`
+}
+
+function loadPersistedRoll(label: string): PersistedRoll | null {
+  try {
+    const raw = window.localStorage.getItem(rollPersistKey(label))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<PersistedRoll> | null
+    if (!parsed || typeof parsed !== "object" || !parsed.result) return null
+    return {
+      result: parsed.result,
+      pendingOverload: Array.isArray(parsed.pendingOverload) ? parsed.pendingOverload : [],
+      engramStack: parsed.engramStack ?? null,
+    }
+  } catch {
+    return null
+  }
+}
+
+function savePersistedRoll(label: string, data: PersistedRoll | null): void {
+  try {
+    const key = rollPersistKey(label)
+    if (!data || !data.result) window.localStorage.removeItem(key)
+    else window.localStorage.setItem(key, JSON.stringify(data))
+  } catch {
+    // storage unavailable — ignore
+  }
+}
+
 const ROLL_ANIM_TICKS = 8
 const ROLL_ANIM_INTERVAL_MS = 60
 const ERROR_FLASH_MS = 420
@@ -168,8 +228,11 @@ export function ApproachDie({
   inference?: number
 }) {
   const wardrobeAvail = wardrobeAvailable ?? wardrobeBonus
+  // Restored once per mount — see the "unresolved roll persistence" doc
+  // comment near loadPersistedRoll/savePersistedRoll above.
+  const [initialPersistedRoll] = useState(() => loadPersistedRoll(label))
   const [errorFlash, setErrorFlash] = useState(false)
-  const [result, setResult] = useState<ApproachDieRollResult | null>(null)
+  const [result, setResult] = useState<ApproachDieRollResult | null>(initialPersistedRoll?.result ?? null)
   // Whether the popup is actually shown right now — distinct from having a
   // `result`. Closing (X/outside tap) only hides the popup; it never
   // throws the roll away. Reopening the same Method (without a fresh roll)
@@ -178,7 +241,7 @@ export function ApproachDie({
   // Method-row press handler in ApproachPanel.tsx that reopens instead of
   // re-rolling when an unresolved result is already sitting here.
   const [popupVisible, setPopupVisible] = useState(false)
-  const [pendingOverload, setPendingOverload] = useState<Set<number>>(new Set())
+  const [pendingOverload, setPendingOverload] = useState<Set<number>>(() => new Set(initialPersistedRoll?.pendingOverload ?? []))
   const [resolved, setResolved] = useState(false)
   const [rolling, setRolling] = useState(false)
   const [armed, setArmed] = useState(false)
@@ -211,7 +274,9 @@ export function ApproachDie({
   // this roll is Confirmed/sent to Margin refunds this Stack's charges and
   // replaces it; once Confirmed/Margin'd (resolvedRef), the Stack is
   // locked and can no longer be swapped or cleared.
-  const [engramStack, setEngramStack] = useState<{ id: string; name: string; rolls: number[] } | null>(null)
+  const [engramStack, setEngramStack] = useState<{ id: string; name: string; rolls: number[] } | null>(
+    initialPersistedRoll?.engramStack ?? null
+  )
   // Caches each Engram's rolled dice for the lifetime of the CURRENT roll
   // (cleared on every fresh rollPool — see below) so swapping away and
   // back to the same Engram before Confirming reuses its first rolled
@@ -331,6 +396,19 @@ export function ApproachDie({
     setPopupVisible(true)
   }, [closePopup])
 
+  // Writes this roll out to localStorage on every change so it survives
+  // the HUD iframe being torn down and recreated (unmount cleanup alone
+  // can't be relied on — see the module doc comment above). Cleared once
+  // Confirmed/Margin'd (`resolved`): everything it represents by then is
+  // already durably persisted elsewhere.
+  useEffect(() => {
+    if (resolved || !result) {
+      savePersistedRoll(label, null)
+      return
+    }
+    savePersistedRoll(label, { result, pendingOverload: Array.from(pendingOverload), engramStack })
+  }, [label, result, pendingOverload, engramStack, resolved])
+
   // The result popup stays open until the player dismisses it (tap outside
   // or the close button) — it never times out on its own. The popup is
   // rendered via createPortal into document.body, physically outside
@@ -345,10 +423,16 @@ export function ApproachDie({
       if (!(event.target instanceof Node)) return
       if (boxRef.current?.contains(event.target)) return
       if (popupRef.current?.contains(event.target)) return
+      // Captured ahead of whatever's actually under the tap (e.g. the HUD's
+      // HP card, which has its own tap-decrements-HP gesture) — closing
+      // the popup must swallow this same pointerdown, or dismissing it
+      // doubles as the first tap of that element's own gesture underneath.
+      event.preventDefault()
+      event.stopPropagation()
       closePopup()
     }
-    document.addEventListener("pointerdown", handleOutside)
-    return () => document.removeEventListener("pointerdown", handleOutside)
+    document.addEventListener("pointerdown", handleOutside, true)
+    return () => document.removeEventListener("pointerdown", handleOutside, true)
   }, [popupVisible, closePopup])
 
   const vibrate = (ms: number) => {
@@ -371,6 +455,8 @@ export function ApproachDie({
   ignoreOverloadSpendRef.current = ignoreOverloadSpend
   const engramStackRef = useRef(engramStack)
   engramStackRef.current = engramStack
+  const labelRef = useRef(label)
+  labelRef.current = label
 
   useEffect(() => () => {
     if (rollAnimTimer.current !== null) window.clearInterval(rollAnimTimer.current)
@@ -405,6 +491,15 @@ export function ApproachDie({
       if (engramStackRef.current && onRefundEngramRef.current) {
         onRefundEngramRef.current(engramStackRef.current.id, engramStackRef.current.rolls.length)
       }
+      // This only runs when unmount cleanup actually fires in the same JS
+      // realm (e.g. a real component unmount, not the HUD iframe being
+      // torn down and recreated — that case is instead handled by the
+      // write-through persistence above, which keeps the roll genuinely
+      // *unresolved* across the reload rather than finalizing it here).
+      // Since this path just finalized the roll for real, drop the
+      // persisted copy so a future mount doesn't restore a stale snapshot
+      // that no longer matches the now-spent/refunded pools.
+      savePersistedRoll(labelRef.current, null)
     }
   }, [])
 
@@ -691,7 +786,14 @@ export function ApproachDie({
     if (noDiceMode || gritRerollUsed || grit <= 0 || margin === null || margin >= 0) return
     if (!spendGrit(1)) return
     setGrit((g) => Math.max(0, g - 1))
-    const rerolled = onRoll(poolMax)
+    // Reroll the same number of dice as the first roll, not `poolMax` —
+    // by the time Grit Reroll is available (a Margin has been calculated),
+    // an Overloaded die has already been spent for real from the
+    // available/Wardrobe pool, so `poolMax` is one die short of what was
+    // actually rolled. The Overloaded die stays spent on the track either
+    // way (handbook v12 p40/p51: Grit doesn't refund it); it just isn't
+    // removed from the dice the Reroll rolls.
+    const rerolled = onRoll(result?.dice.length ?? poolMax)
     setResult(rerolled)
     const newDieMax = rerolled.dice.reduce((max, d) => Math.max(max, d.total), 0)
     const newTotal = newDieMax + engramBonusTotal + totalAllModifier + (gritBonusDie ?? 0) + totalAttackDefenseModifier

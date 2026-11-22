@@ -131,7 +131,7 @@ export function adjustHpCounter(delta: number, chudStateKey: string): void {
     const next = Math.min(hpMax, Math.max(0, current + delta));
     const hasBeenDownedBefore = parsed.hasBeenDownedBefore === true;
     const { collapse } = readGlobalMeters();
-    const nowDowned = queueHpZeroNotificationsIfNeeded(current, next, hasBeenDownedBefore, collapse >= METER_MAX);
+    const nowDowned = queueHpZeroNotificationsIfNeeded(current, next, hasBeenDownedBefore, collapse + 1 >= METER_MAX);
     const json = JSON.stringify({
       ...parsed,
       hpCounter: next,
@@ -190,7 +190,7 @@ export function spendGrit(amount = 1): boolean {
         "grit-zero",
         "Grit reached 0",
         "Accept to apply +1 Collapse and recover Grit, or cancel to leave Grit at 0.",
-        { collapse: 1, grit: rolled },
+        { collapse: 1, gritSetRaw: rolled },
         { roll: { die: 6, value: rolled } }
       );
     }

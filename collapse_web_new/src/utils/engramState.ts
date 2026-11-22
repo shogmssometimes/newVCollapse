@@ -19,12 +19,31 @@
 // (copies was the only cap taps respected), making an Engram "recharge for
 // free" the instant you tapped it again post-activation — only
 // `fullRestEngrams` is allowed to restore spent `usesLeft`.
+//
+// `usesLeft` itself is derived, not stored directly: `spent` (a persisted
+// running total, only ever zeroed by fullRestEngrams) tracks how many uses
+// have actually been activated since the last Rest, and
+// `usesLeft = max(0, copies - spent)`. Deriving it this way — instead of
+// nudging a stored `usesLeft` up/down whenever `copies` changes — is what
+// makes setEngramCopies safe to call repeatedly: re-equipping a copy that
+// was removed earlier this Rest doesn't hand back a use that's still
+// genuinely spent (copies going 2 -> 1 -> 2 with `spent` unchanged at 2
+// still nets usesLeft 0), while genuinely owning more copies than ever
+// before this Rest still grants fresh uses for them (copies going 1 -> 2
+// with 1 already spent nets usesLeft 1, since the pool grew to 2 but only
+// 1 use has ever been spent against it).
 
 export type EquippedEngramState = { copies: number; charges: number; usesLeft: number }
 
 export type EngramManagerState = {
   equipped: Record<string, EquippedEngramState>
 }
+
+// On-disk shape: `spent` is the new persisted field; `usesLeft` is kept
+// optional purely so old saves (written before this field existed) can be
+// migrated on first read.
+type StoredEngramState = { copies: number; charges: number; spent?: number; usesLeft?: number }
+type StoredEngramManagerState = { equipped: Record<string, StoredEngramState> }
 
 function notify(key: string, json: string) {
   try {
@@ -34,29 +53,40 @@ function notify(key: string, json: string) {
   }
 }
 
-// Back-fills `usesLeft` for Engram state written before this field
-// existed — treats it as fully available (same as a Full Rest), since an
+// Migrates a stored record to a known `spent` value — back-fills it from
+// the old `usesLeft` field (copies - usesLeft) when absent, and treats a
+// record with neither as fully available (same as a Full Rest), since an
 // unset value should never retroactively lock an Engram the player could
 // already freely tap before.
-function withUsesLeft(e: { copies: number; charges: number; usesLeft?: number }): EquippedEngramState {
-  return { copies: e.copies, charges: e.charges, usesLeft: e.usesLeft ?? e.copies }
+function withSpent(e: StoredEngramState): { copies: number; charges: number; spent: number } {
+  const spent = e.spent ?? Math.max(0, e.copies - (e.usesLeft ?? e.copies))
+  return { copies: e.copies, charges: e.charges, spent }
 }
 
-export function readEngramState(storageKey: string): EngramManagerState {
+function toPublic(e: StoredEngramState): EquippedEngramState {
+  const { copies, charges, spent } = withSpent(e)
+  return { copies, charges, usesLeft: Math.max(0, copies - spent) }
+}
+
+function readRawState(storageKey: string): StoredEngramManagerState {
   try {
     const raw = window.localStorage.getItem(storageKey)
     if (!raw) return { equipped: {} }
-    const parsed = JSON.parse(raw) as Partial<EngramManagerState>
-    const equipped = parsed.equipped ?? {}
-    return {
-      equipped: Object.fromEntries(Object.entries(equipped).map(([id, e]) => [id, withUsesLeft(e)])),
-    }
+    const parsed = JSON.parse(raw) as Partial<StoredEngramManagerState>
+    return { equipped: parsed.equipped ?? {} }
   } catch {
     return { equipped: {} }
   }
 }
 
-function writeEngramState(storageKey: string, next: EngramManagerState): void {
+export function readEngramState(storageKey: string): EngramManagerState {
+  const raw = readRawState(storageKey)
+  return {
+    equipped: Object.fromEntries(Object.entries(raw.equipped).map(([id, e]) => [id, toPublic(e)])),
+  }
+}
+
+function writeRawState(storageKey: string, next: StoredEngramManagerState): void {
   try {
     const json = JSON.stringify(next)
     window.localStorage.setItem(storageKey, json)
@@ -66,72 +96,69 @@ function writeEngramState(storageKey: string, next: EngramManagerState): void {
   }
 }
 
-/** Sets how many copies of an Engram are equipped, clamping charges and
- * usesLeft to the new copies count (copies are the max pool for both). */
+/** Sets how many copies of an Engram are equipped. `spent` (how many uses
+ * have been activated since the last Rest) is untouched by this — it's
+ * what makes removing then re-adding a copy mid-Rest NOT refill a use that
+ * was already genuinely spent (see the module doc comment above). Charges
+ * are clamped down if they'd otherwise exceed the new, smaller pool. */
 export function setEngramCopies(storageKey: string, engramId: string, copies: number): void {
-  const state = readEngramState(storageKey)
+  const state = readRawState(storageKey)
   const safeCopies = Math.max(0, Math.round(copies))
   const equipped = { ...state.equipped }
   if (safeCopies <= 0) {
-    delete equipped[engramId]
+    // Still tracked at copies: 0 (not deleted) so `spent` survives a
+    // temporary full unequip — re-equipping later in the same Rest must
+    // not hand back uses already spent against the copy being removed.
+    const prev = withSpent(equipped[engramId] ?? { copies: 0, charges: 0 })
+    equipped[engramId] = { copies: 0, charges: 0, spent: prev.spent }
   } else {
-    // A brand-new equip starts uncharged (0) but with full uses available
-    // — charges are only ever built up afterward via the Engram Q's
-    // tap-to-charge gesture, never granted for free just by equipping.
-    const prev = equipped[engramId]
-    const prevCharges = prev?.charges ?? 0
-    const prevCopies = prev?.copies ?? 0
-    const prevUsesLeft = prev?.usesLeft ?? safeCopies
-    // Added copies (safeCopies > prevCopies) bring their own uses with
-    // them — otherwise equipping Wing-It ×1 (used, usesLeft 0), then
-    // adding a second copy, left usesLeft clamped at min(0, 2) = 0 and the
-    // new copy's use was never actually granted. A decrease still just
-    // clamps down, same as before.
-    const addedCopies = Math.max(0, safeCopies - prevCopies)
+    const prev = withSpent(equipped[engramId] ?? { copies: safeCopies, charges: 0, spent: 0 })
     equipped[engramId] = {
       copies: safeCopies,
-      charges: Math.min(prevCharges, safeCopies),
-      usesLeft: Math.min(safeCopies, prevUsesLeft + addedCopies),
+      charges: Math.min(prev.charges, safeCopies),
+      spent: prev.spent,
     }
   }
-  writeEngramState(storageKey, { ...state, equipped })
+  writeRawState(storageKey, { ...state, equipped })
 }
 
 /** Spends `amount` charges from one Engram (floor at 0) — also permanently
  * consumes that many uses, same as spendAllEngramCharges. */
 export function spendEngramCharges(storageKey: string, engramId: string, amount: number): void {
-  const state = readEngramState(storageKey)
-  const current = state.equipped[engramId]
-  if (!current) return
+  const state = readRawState(storageKey)
+  const raw = state.equipped[engramId]
+  if (!raw) return
+  const current = withSpent(raw)
   const safeAmount = Math.max(0, amount)
   const equipped = {
     ...state.equipped,
     [engramId]: {
       ...current,
       charges: Math.max(0, current.charges - safeAmount),
-      usesLeft: Math.max(0, current.usesLeft - safeAmount),
+      spent: current.spent + safeAmount,
     },
   }
-  writeEngramState(storageKey, { ...state, equipped })
+  writeRawState(storageKey, { ...state, equipped })
 }
 
 /** Adds `amount` charges (and the uses they consumed) back to one Engram —
  * used to refund a Stack that was swapped out of the roller before being
  * Confirmed/sent to Margin, since that Stack was never actually used.
- * Clamped to the Engram's copies count (its max pool for both fields). */
+ * Charges are clamped to the Engram's copies count; `spent` floors at 0. */
 export function refundEngramCharges(storageKey: string, engramId: string, amount: number): void {
-  const state = readEngramState(storageKey)
-  const current = state.equipped[engramId]
-  if (!current || amount <= 0) return
+  const state = readRawState(storageKey)
+  const raw = state.equipped[engramId]
+  if (!raw || amount <= 0) return
+  const current = withSpent(raw)
   const equipped = {
     ...state.equipped,
     [engramId]: {
       ...current,
       charges: Math.min(current.copies, current.charges + amount),
-      usesLeft: Math.min(current.copies, current.usesLeft + amount),
+      spent: Math.max(0, current.spent - amount),
     },
   }
-  writeEngramState(storageKey, { ...state, equipped })
+  writeRawState(storageKey, { ...state, equipped })
 }
 
 /** The Engram Q widget's tap gesture: charges/preps one more stack (+1),
@@ -142,13 +169,15 @@ export function refundEngramCharges(storageKey: string, engramId: string, amount
  * spent via a long-press (spendAllEngramCharges) or restored by a Full
  * Rest, never lost (or gained) by a tap alone. */
 export function addEngramCharge(storageKey: string, engramId: string): void {
-  const state = readEngramState(storageKey)
-  const current = state.equipped[engramId]
-  if (!current) return
-  const cap = Math.min(current.copies, current.usesLeft)
+  const state = readRawState(storageKey)
+  const raw = state.equipped[engramId]
+  if (!raw) return
+  const current = withSpent(raw)
+  const usesLeft = Math.max(0, current.copies - current.spent)
+  const cap = Math.min(current.copies, usesLeft)
   const next = cap <= 0 ? 0 : current.charges >= cap ? 0 : current.charges + 1
   const equipped = { ...state.equipped, [engramId]: { ...current, charges: next } }
-  writeEngramState(storageKey, { ...state, equipped })
+  writeRawState(storageKey, { ...state, equipped })
 }
 
 /** Spends every currently-charged use of one equipped Engram at once — the
@@ -159,15 +188,17 @@ export function addEngramCharge(storageKey: string, engramId: string): void {
  * Engram isn't equipped or already empty), so the caller knows how many
  * bonus d4s to roll. */
 export function spendAllEngramCharges(storageKey: string, engramId: string): number {
-  const state = readEngramState(storageKey)
-  const current = state.equipped[engramId]
-  if (!current || current.charges <= 0) return 0
+  const state = readRawState(storageKey)
+  const raw = state.equipped[engramId]
+  if (!raw) return 0
+  const current = withSpent(raw)
+  if (current.charges <= 0) return 0
   const amount = current.charges
-  writeEngramState(storageKey, {
+  writeRawState(storageKey, {
     ...state,
     equipped: {
       ...state.equipped,
-      [engramId]: { ...current, charges: 0, usesLeft: Math.max(0, current.usesLeft - amount) },
+      [engramId]: { ...current, charges: 0, spent: current.spent + amount },
     },
   })
   return amount
@@ -178,9 +209,9 @@ export function spendAllEngramCharges(storageKey: string, engramId: string): num
  * preloaded to copies) — Full Rest hands uses back, it doesn't load the Q
  * for the player; which Engrams get tapped up again is still their choice. */
 export function fullRestEngrams(storageKey: string): void {
-  const state = readEngramState(storageKey)
+  const state = readRawState(storageKey)
   const equipped = Object.fromEntries(
-    Object.entries(state.equipped).map(([id, e]) => [id, { ...e, charges: 0, usesLeft: e.copies }])
+    Object.entries(state.equipped).map(([id, e]) => [id, { copies: e.copies, charges: 0, spent: 0 }])
   )
-  writeEngramState(storageKey, { equipped })
+  writeRawState(storageKey, { equipped })
 }

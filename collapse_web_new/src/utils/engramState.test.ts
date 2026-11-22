@@ -79,8 +79,30 @@ describe("addEngramCharge after spendAllEngramCharges", () => {
     expect(state.copies).toBe(2);
     expect(state.usesLeft).toBe(1); // the added copy brings its own use
 
-    // A decrease still just clamps down, it doesn't grant anything.
+    // A decrease back down to 1 copy still only has 1 unit of pool total,
+    // against which 1 use has already been spent — usesLeft is 0, not
+    // left over at 1 (see the "removing then re-adding a copy" regression
+    // test below for why usesLeft can't just be clamped-not-reduced here).
     setEngramCopies(KEY, ID, 1);
-    expect(readEngramState(KEY).equipped[ID].usesLeft).toBe(1);
+    expect(readEngramState(KEY).equipped[ID].usesLeft).toBe(0);
+  });
+
+  it("removing then re-adding copies does not refill already-spent uses without a Full Rest (regression)", () => {
+    setEngramCopies(KEY, ID, 2);
+    addEngramCharge(KEY, ID);
+    addEngramCharge(KEY, ID); // charges = 2
+    spendAllEngramCharges(KEY, ID); // both copies' uses spent
+    expect(readEngramState(KEY).equipped[ID].usesLeft).toBe(0);
+
+    setEngramCopies(KEY, ID, 1); // remove a copy
+    setEngramCopies(KEY, ID, 2); // and re-add it
+    expect(readEngramState(KEY).equipped[ID].usesLeft).toBe(0);
+
+    setEngramCopies(KEY, ID, 0); // fully unequip
+    setEngramCopies(KEY, ID, 2); // and re-equip both copies
+    expect(readEngramState(KEY).equipped[ID].usesLeft).toBe(0);
+
+    fullRestEngrams(KEY);
+    expect(readEngramState(KEY).equipped[ID].usesLeft).toBe(2);
   });
 });

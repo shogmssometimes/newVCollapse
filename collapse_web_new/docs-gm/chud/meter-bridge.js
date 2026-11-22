@@ -13,20 +13,32 @@ const _slotKey = (legacyKey, strippedBase) => (_mbSlot === 1 ? legacyKey : `${st
 const STORAGE_KEY = _slotKey('csmatrix.graph', 'csmatrix.graph')
 const NOTIFICATIONS_KEY = _slotKey('chud.notifications.v1', 'chud.notifications')
 const WALLET_KEY = _slotKey('chud.wallet', 'chud.wallet')
-const COMBAT_KEY = _slotKey('combat.v1', 'combat')
 const STATUS_ROLLS_KEY = _slotKey('chud.statusRolls', 'chud.statusRolls')
 const UI_KEY = _slotKey('chud.ui.v1', 'chud.ui')
 const CHUD_STATE_KEY = _slotKey('chud.state.v1', 'chud.state')
 const WARDROBE_STORAGE_KEY = _slotKey('wardrobe.v1', 'wardrobe')
 const STATUS_ROLL_MAX = 50
 const STATUS_ROLL_MAX_ROWS = 10
+// No Dice Mode (per-device, not per-slot — src/utils/noDiceMode.ts is the
+// TS mirror of this same key/flag): when on, the app never rolls — it's
+// just the character sheet. Read fresh each time rather than cached, since
+// it can be flipped from Profile.tsx in another tab at any moment.
+const NO_DICE_MODE_KEY = 'collapse.noDiceMode'
+function isNoDiceMode() {
+  try {
+    return localStorage.getItem(NO_DICE_MODE_KEY) === '1'
+  } catch { return false }
+}
 const STATUS_ROLL_DEFAULT_ROWS = 2
 // Handbook's Status Effects table (Phase "Environmental Effects In
-// Action"), 27 entries, transcribed verbatim — see /tmp/v10.txt around
-// line 2195 for the source table. This replaces an older, pre-handbook
-// list that used retired terminology (AP, Mod Engrams, Overdrive) and
-// included statuses that don't exist in the handbook (Inspired,
-// Overclocked, Exhausted, Pressured).
+// Action"), 27 entries — see /tmp/v10.txt around line 2195 for the source
+// table. This replaces an older, pre-handbook list that used retired
+// terminology (AP, Mod Engrams, Overdrive) and included statuses that
+// don't exist in the handbook (Inspired, Overclocked, Exhausted,
+// Pressured). Hacked/Desynced were later removed (never-implemented
+// mechanics) and Hidden/Reckless added; Shielded's effect text was
+// rewritten to the Set-based rules fix (replaces the old flat xd4
+// absorb).
 const STATUS_EFFECTS_CATALOG = [
   { name: 'Slowed', effect: 'Any movement costs an Action instead' },
   { name: 'Bound', effect: 'Cannot take movement actions' },
@@ -42,10 +54,9 @@ const STATUS_EFFECTS_CATALOG = [
   { name: 'Frightened', effect: 'Must remain in an adjacent zone to fear source' },
   { name: 'Crushed', effect: "Roll 1d6, on 1-2, lose your Movement Action, 3-4 lose your Non Movement Action, 5-6 can't use Gear" },
   { name: 'Confused', effect: 'Roll twice, take lower' },
-  { name: 'Hacked', effect: 'Roll xd4, control target for that # of Turns' },
   { name: 'Discombobulated', effect: 'Roll 1d4, on 1, Combat Actions hit a random target' },
   { name: 'Focused', effect: 'On rolls, roll twice, take higher' },
-  { name: 'Shielded', effect: 'Target absorbs xd4 Wounds before reducing HP' },
+  { name: 'Shielded', effect: "Attacks against you hit the Set first. No Wounds are produced. Subtract the attacker's whole Total from the Set. If the Set holds, the attack does nothing except reduce the Set. If the Total is higher, the Shield breaks, and the leftover becomes the attack's Total against your defense roll." },
   { name: 'Fortified', effect: 'WT increased by 1' },
   { name: 'Hastened', effect: 'Gain an extra Movement Action each round this remains active' },
   { name: 'Energized', effect: 'Gain +1 Non Movement Action' },
@@ -54,7 +65,8 @@ const STATUS_EFFECTS_CATALOG = [
   { name: 'Demoralized', effect: 'Cannot Ganbare or receive Ganbare' },
   { name: 'Rattled', effect: 'Cannot use Overload' },
   { name: 'Downed', effect: 'Out of the fight, must be revived' },
-  { name: 'Desynced', effect: 'Your Enhancer is Desynced' },
+  { name: 'Hidden', effect: '+1d6 to Finesse, Logic and Show rolls. Found by a Perception check that meets or beats your Set; if found, lose Hidden and become Exposed.' },
+  { name: 'Reckless', effect: '+1d6 to Force, Guts and Tell rolls. Stopped by a Method roll (Roleplay Action) that meets or beats your Set; if stopped, lose Reckless and become Exposed.' },
 ]
 function readUI() {
   try { const r = localStorage.getItem(UI_KEY); return r ? JSON.parse(r) : {} } catch { return {} }
@@ -294,7 +306,7 @@ function createStyles() {
     /* ── Status Rolls Panel ───────────────────────────────────────────── */
     .chud-status-rolls { margin-top: 4px; display: flex; flex-direction: column; gap: 8px; }
     .status-roll-header { display: flex; gap: 6px; padding: 0 2px; }
-    .status-roll-header span { font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(248,250,252,0.4); font-weight: 600; }
+    .status-roll-header span { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(248,250,252,0.4); font-weight: 600; }
     .status-roll-header span.col-dir { flex: 11 1 0; text-align: center; }
     .status-roll-header span.col-name { flex: 26 1 0; }
     .status-roll-header span.col-effect { flex: 42 1 0; }
@@ -302,21 +314,31 @@ function createStyles() {
     .status-roll-header span.col-clear { flex: 10 1 0; text-align: center; }
     .status-roll-rows { display: flex; flex-direction: column; gap: 6px; }
     .status-roll-row { display: flex; flex-direction: column; gap: 4px; position: relative; }
+    /* Marks a freshly-sent roll as "new" until the player names it, instead
+       of pre-filling the Name field with placeholder text that had to be
+       deleted every time. */
+    .status-roll-row-new { animation: status-roll-row-new-glow 1.8s ease-in-out infinite; border-radius: 8px; }
+    .status-roll-row-new .status-roll-name-input { border-color: rgba(255,212,59,0.7); }
+    @keyframes status-roll-row-new-glow {
+      0%, 100% { box-shadow: 0 0 0 rgba(255,212,59,0); }
+      50% { box-shadow: 0 0 14px rgba(255,212,59,0.45); }
+    }
     .status-roll-row-main { display: flex; gap: 6px; align-items: stretch; }
     .status-roll-name-wrap { position: relative; flex: 26 1 0; min-width: 0; }
-    .status-roll-name-input { width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 7px 8px; font-size: 11px; color: #e9f0ff; outline: none; }
+    .status-roll-name-input { width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 7px 8px; font-size: 16px; color: #e9f0ff; outline: none; }
     .status-roll-name-input:focus { border-color: rgba(61,232,192,0.45); }
     .status-roll-suggestions { position: absolute; top: 100%; left: 0; right: 0; margin-top: 3px; background: #0d1117; border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; max-height: 170px; overflow-y: auto; z-index: 30; box-shadow: 0 10px 28px rgba(0,0,0,0.55); }
     .status-roll-suggestion { padding: 8px 10px; font-size: 11px; color: #e9f0ff; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.06); }
     .status-roll-suggestion:last-child { border-bottom: none; }
     .status-roll-suggestion:hover { background: rgba(61,232,192,0.16); }
-    .status-roll-effect { flex: 42 1 0; min-width: 0; box-sizing: border-box; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 7px 8px; font-size: 10px; color: rgba(248,250,252,0.8); outline: none; line-height: 1.25; }
+    .status-roll-effect { flex: 42 1 0; min-width: 0; box-sizing: border-box; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 7px 8px; font-size: 16px; color: rgba(248,250,252,0.8); outline: none; line-height: 1.25; }
     .status-roll-effect[data-readonly="1"] { color: rgba(248,250,252,0.55); font-style: italic; }
     .status-roll-effect:focus { border-color: rgba(61,232,192,0.3); }
     .status-roll-value-wrap { flex: 22 1 0; display: flex; align-items: center; justify-content: center; gap: 4px; position: relative; }
-    .status-roll-value-btn { width: 24px; height: 24px; flex-shrink: 0; border-radius: 6px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.07); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .status-roll-value-btn { width: 32px; height: 32px; flex-shrink: 0; border-radius: 6px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.07); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .status-roll-value-btn:active { transform: scale(0.94); }
-    .status-roll-value { min-width: 20px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 800; color: #6ac7ff; font-size: 12px; }
+    .status-roll-value { min-width: 20px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 800; color: #6ac7ff; font-size: 12px; cursor: pointer; }
+    .status-roll-value-input { width: 2.6em; min-width: 20px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 800; color: #6ac7ff; font-size: 16px; background: rgba(0,0,0,0.3); border: 1px solid rgba(106,199,255,0.5); border-radius: 4px; }
     .status-roll-clear { flex: 8.5 1 0; min-width: 26px; border-radius: 8px; border: 1px solid rgba(239,68,68,0.4); background: rgba(239,68,68,0.1); color: #f87171; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
     .status-roll-clear-progress { position: absolute; inset: 0; background: rgba(239,68,68,0.4); width: 0%; pointer-events: none; }
     .status-roll-clear-icon { position: relative; z-index: 1; }
@@ -324,7 +346,7 @@ function createStyles() {
     .status-roll-add:disabled { opacity: 0.35; cursor: not-allowed; }
 
     /* ── Set Roll direction (applied by you vs applied to you) ───────── */
-    .status-roll-direction { position: relative; overflow: hidden; isolation: isolate; flex: 13 1 0; min-width: 40px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.05); color: rgba(248,250,252,0.75); font-size: 8px; font-weight: 700; letter-spacing: 0.02em; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 2px; text-align: center; }
+    .status-roll-direction { position: relative; overflow: hidden; isolation: isolate; flex: 13 1 0; min-width: 40px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.05); color: rgba(248,250,252,0.75); font-size: 11px; font-weight: 700; letter-spacing: 0.02em; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 2px; text-align: center; }
     .status-roll-direction-label { position: relative; z-index: 1; }
     .status-roll-direction[data-dir="in"] { border-color: rgba(111,165,255,0.45); color: #8fb4ff; background: rgba(111,165,255,0.1); }
     .status-roll-direction[data-dir="out"] { border-color: rgba(242,208,107,0.45); color: #f2d06b; background: rgba(242,208,107,0.1); }
@@ -389,10 +411,6 @@ function createStyles() {
     .chud-combat-body { display: none; padding: 8px 0 0; }
     .chud-combat-body.open { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
     .combat-body-row { display: flex; gap: 8px; align-items: stretch; }
-    .combat-chip-wrap { min-width: 0; display: flex; flex-direction: column; justify-content: center; }
-    .combat-chip-toggle { flex: 1; padding: 10px 8px; border: 1px solid rgba(74,222,128,0.4); border-radius: 10px; background: rgba(74,222,128,0.08); color: #4ade80; font-weight: 700; font-size: 10px; letter-spacing: 0.06em; cursor: pointer; transition: background 120ms, border-color 120ms, color 120ms, transform 80ms; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .combat-chip-toggle:active { transform: scale(0.97); }
-    .combat-chip-toggle[data-desynced="1"] { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.5); color: #f87171; }
 
     /* ── Range / Durability / Damage read-only row ── */
     .combat-info-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-items: stretch; }
@@ -580,14 +598,26 @@ function buildGritCollapseMeter(getMeters, setMeters) {
         if (next === prevGrit) return
         setMeters({ ...meters, grit: next })
         if (prevGrit > 0 && next === 0 && !hasPendingNotification('grit-zero')) {
-          const rolled = 1 + Math.floor(Math.random() * 6)
-          pushNotification(
-            'grit-zero',
-            'Grit reached 0',
-            `Accept to apply +1 Collapse and recover Grit, or cancel to leave Grit at 0.`,
-            { collapse: 1, grit: rolled },
-            { roll: { die: 6, value: rolled } }
-          )
+          if (isNoDiceMode()) {
+            // No Dice Mode (C4): Grit stays at 0 until the player raises it
+            // themselves — accepting only applies +1 Collapse, no rolled
+            // Grit value attached.
+            pushNotification(
+              'grit-zero',
+              'Grit reached 0',
+              '+1 Collapse. Reroll Grit at the table and set it on the bar.',
+              { collapse: 1 }
+            )
+          } else {
+            const rolled = 1 + Math.floor(Math.random() * 6)
+            pushNotification(
+              'grit-zero',
+              'Grit reached 0',
+              `Accept to apply +1 Collapse and recover Grit, or cancel to leave Grit at 0.`,
+              { collapse: 1, grit: rolled },
+              { roll: { die: 6, value: rolled } }
+            )
+          }
         }
       } else {
         const next = clamp((meters.collapse ?? 0) + delta)
@@ -628,52 +658,6 @@ function buildGritCollapseMeter(getMeters, setMeters) {
   return { container, update }
 }
 
-function readCombat() {
-  try {
-    const raw = localStorage.getItem(COMBAT_KEY)
-    if (!raw) return { reactionTokens: 0, chipDesynced: false }
-    return { reactionTokens: 0, chipDesynced: false, ...JSON.parse(raw) }
-  } catch { return { reactionTokens: 0, chipDesynced: false } }
-}
-
-function writeCombat(state) {
-  try {
-    const json = JSON.stringify(state)
-    localStorage.setItem(COMBAT_KEY, json)
-    window.dispatchEvent(new StorageEvent('storage', { key: COMBAT_KEY, newValue: json, storageArea: window.localStorage }))
-  } catch {}
-}
-
-function buildCombatPanel() {
-  // Reaction Tokens and the action/reaction Queue have been removed (player
-  // side no longer tracks them here). Chip Sync is preserved below.
-  const chipWrap = document.createElement('div')
-  chipWrap.className = 'combat-chip-wrap'
-  const chipBtn = document.createElement('button')
-  chipBtn.className = 'combat-chip-toggle'
-  chipBtn.setAttribute('data-touch-blocker-ignore', '')
-  chipWrap.appendChild(chipBtn)
-
-  const chipSection = document.createElement('div')
-  chipSection.className = 'chud-hp-queue-section'
-  chipSection.appendChild(chipWrap)
-
-  const refresh = () => {
-    const state = readCombat()
-    const desynced = !!state.chipDesynced
-    chipBtn.innerHTML = desynced ? 'Desynced' : 'Synced'
-    chipBtn.dataset.desynced = desynced ? '1' : '0'
-  }
-
-  chipBtn.addEventListener('click', () => {
-    const s = readCombat(); writeCombat({ ...s, chipDesynced: !s.chipDesynced }); refresh()
-  })
-
-  refresh()
-  window.addEventListener('storage', (ev) => { if (ev.key === COMBAT_KEY) refresh() })
-  return { chipSection }
-}
-
 function readStatusRolls() {
   try {
     const raw = localStorage.getItem(STATUS_ROLLS_KEY)
@@ -707,7 +691,7 @@ function buildStatusRollsPanel() {
   const normalizeName = (s) => String(s || '').trim().toLowerCase()
   const byName = new Map(STATUS_EFFECTS_CATALOG.map((it) => [normalizeName(it.name), it]))
   const clampStatusRoll = (n) => Math.max(0, Math.min(STATUS_ROLL_MAX, Number.isFinite(n) ? n : 0))
-  const newRow = () => ({ id: `sr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: '', effect: '', roll: 0, direction: 'in' })
+  const newRow = () => ({ id: `sr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: '', effect: '', roll: 0, direction: 'in', firstRollDone: false })
   const APPROACH_LABELS = [
     ['force', 'Force'], ['finesse', 'Finesse'], ['guts', 'Guts'],
     ['logic', 'Logic'], ['show', 'Show'], ['tell', 'Tell'],
@@ -724,6 +708,21 @@ function buildStatusRollsPanel() {
       const approach = s?.approach && typeof s.approach === 'object' ? s.approach : {}
       return { approach }
     } catch { return { approach: {} } }
+  }
+  // Mirrors domain/chudStats.ts's DEFAULT_COLLAPSE_MODIFIERS/withCollapseModifiers.
+  // Duplicated here for the same reason as STAT_AND_METHOD_MAX above — this
+  // file isn't bundled by Vite and can't import the TS domain layer.
+  const readCollapseModifiers = () => {
+    try {
+      const s = JSON.parse(localStorage.getItem(CHUD_STATE_KEY) || '{}')
+      const m = s?.collapseModifiers && typeof s.collapseModifiers === 'object' ? s.collapseModifiers : {}
+      const methodDice = m.methodDice && typeof m.methodDice === 'object' ? m.methodDice : {}
+      return {
+        totalAll: Number(m.totalAll) || 0,
+        totalAttackDefense: Number(m.totalAttackDefense) || 0,
+        methodDice,
+      }
+    } catch { return { totalAll: 0, totalAttackDefense: 0, methodDice: {} } }
   }
   // Mirrors domain/wardrobeBonus.ts: sum each Wardrobe row's "+N" Quality
   // onto the Approach it's assigned to. A Save is an Approach Roll, so these
@@ -782,6 +781,30 @@ function buildStatusRollsPanel() {
       window.dispatchEvent(new StorageEvent('storage', { key: CHUD_STATE_KEY, newValue: json, storageArea: localStorage }))
     } catch {}
   }
+  // Wardrobe dice overloaded during a Save spend from their own separate
+  // pool (approachWardrobeOverloadSpent), same as a normal Method roll's
+  // Overload — see chudVanillaBridge.ts's resetApproachOverload, which
+  // resets both pools together.
+  const readWardrobeOverloadSpent = (field) => {
+    try {
+      const s = JSON.parse(localStorage.getItem(CHUD_STATE_KEY) || '{}')
+      const spent = s?.approachWardrobeOverloadSpent
+      const n = spent && typeof spent === 'object' ? Number(spent[field]) : 0
+      return Number.isFinite(n) && n > 0 ? n : 0
+    } catch { return 0 }
+  }
+  const writeWardrobeOverloadSpent = (field, next) => {
+    try {
+      const raw = localStorage.getItem(CHUD_STATE_KEY)
+      const parsed = raw ? JSON.parse(raw) : {}
+      const spentMap = parsed.approachWardrobeOverloadSpent && typeof parsed.approachWardrobeOverloadSpent === 'object'
+        ? { ...parsed.approachWardrobeOverloadSpent } : {}
+      spentMap[field] = next
+      const json = JSON.stringify({ ...parsed, approachWardrobeOverloadSpent: spentMap })
+      localStorage.setItem(CHUD_STATE_KEY, json)
+      window.dispatchEvent(new StorageEvent('storage', { key: CHUD_STATE_KEY, newValue: json, storageArea: localStorage }))
+    } catch {}
+  }
   const hydrateRows = (rows) => {
     const safe = (Array.isArray(rows) ? rows : []).slice(0, STATUS_ROLL_MAX_ROWS).map((row, idx) => {
       const name = String(row?.name || '')
@@ -793,6 +816,8 @@ function buildStatusRollsPanel() {
         effect,
         roll: clampStatusRoll(Number(row?.roll ?? 0)),
         direction: row?.direction === 'out' ? 'out' : 'in',
+        firstRollDone: row?.firstRollDone === true,
+        openValueEntry: row?.openValueEntry === true,
       }
     })
     while (safe.length < STATUS_ROLL_DEFAULT_ROWS) safe.push(newRow())
@@ -886,13 +911,15 @@ function buildStatusRollsPanel() {
       const grid = document.createElement('div')
       grid.className = 'status-roll-save-approach-grid'
       const { approach } = readApproachState()
+      const { methodDice } = readCollapseModifiers()
       APPROACH_LABELS.forEach(([key, label]) => {
-        const base = Number(approach?.[key]) || 0
+        const base = Math.max(0, (Number(approach?.[key]) || 0) + (Number(methodDice?.[key]) || 0))
         const { bonus } = readWardrobeBonus(key)
-        // Picker shows the base (Core-distributed) rating only — the
-        // Overload-spendable pool size. Wardrobe is a separate add-on that
-        // always rolls but never appears as part of this number, mirroring
-        // ApproachDie.tsx/ApproachPanel.tsx's base-only pool.
+        // Picker shows the base (Core-distributed + Collapse-modified)
+        // rating only — the Overload-spendable pool size. Wardrobe is a
+        // separate add-on that always rolls but never appears as part of
+        // this number, mirroring ApproachDie.tsx/ApproachPanel.tsx's
+        // base-only pool.
         const rating = Math.min(STAT_AND_METHOD_MAX, base)
         const btn = document.createElement('button')
         btn.className = 'status-roll-save-approach-btn'
@@ -911,42 +938,30 @@ function buildStatusRollsPanel() {
       body.innerHTML = ''
 
       const { approach } = readApproachState()
-      const base = Number(approach?.[field]) || 0
+      const { methodDice, totalAll } = readCollapseModifiers()
+      const base = Math.max(0, (Number(approach?.[field]) || 0) + (Number(methodDice?.[field]) || 0))
       const { bonus: wardrobeBonus, items: wardrobeItems } = readWardrobeBonus(field)
-      // Base rating alone is the track/Overload-spendable pool — matches
-      // ApproachDie.tsx's base-only pool. Wardrobe dice always roll in
-      // addition (see rollBtn handler below) but are never armed/tracked.
       const rating = Math.min(STAT_AND_METHOD_MAX, base)
-      let spent = readOverloadSpent(field)
-      let available = Math.max(0, rating - spent)
-      let armed = 0
-      let armedFading = false
-      let armedFadeTimer = null
-      let armedIdleTimer = null
+      let baseSpent = readOverloadSpent(field)
+      let baseAvailable = Math.max(0, rating - baseSpent)
+      let wardrobeSpent = readWardrobeOverloadSpent(field)
+      let wardrobeAvailable = Math.max(0, wardrobeBonus - wardrobeSpent)
+      // The handbook always rolls the entire available pool — there's no
+      // manual "arm fewer dice than you have" step. Total dice this roll
+      // (base + Wardrobe) is capped at STAT_AND_METHOD_MAX (6), same as a
+      // normal Method roll; any excess is truncated from the Wardrobe side
+      // only, since the base pool is already assumed to be ≤ the cap.
+      const rolledBaseCount = baseAvailable
+      const rolledWardrobeCount = Math.max(0, Math.min(wardrobeAvailable, STAT_AND_METHOD_MAX - rolledBaseCount))
+      const rollCount = rolledBaseCount + rolledWardrobeCount
       let dice = null
       const overloadedSet = new Set()
-
-      // Mirrors the real Approach die: an armed-but-unrolled die that sits
-      // idle for 30s fades out over the last second as a warning, then
-      // un-arms itself. Any change to `armed` restarts this.
-      const clearArmedTimers = () => {
-        if (armedFadeTimer !== null) { clearTimeout(armedFadeTimer); armedFadeTimer = null }
-        if (armedIdleTimer !== null) { clearTimeout(armedIdleTimer); armedIdleTimer = null }
-      }
-      const scheduleArmedTimers = () => {
-        clearArmedTimers()
-        armedFading = false
-        if (armed <= 0) return
-        armedFadeTimer = setTimeout(() => { armedFading = true; renderPips() }, 29000)
-        armedIdleTimer = setTimeout(() => { armed = 0; armedFading = false; renderPips() }, 30000)
-      }
 
       const backBtn = document.createElement('button')
       backBtn.className = 'status-roll-save-back'
       backBtn.setAttribute('data-touch-blocker-ignore', '')
       backBtn.textContent = '← Choose Method'
-      backBtn.addEventListener('click', () => { clearArmedTimers(); renderApproachPicker() })
-      closeBtn.addEventListener('click', clearArmedTimers)
+      backBtn.addEventListener('click', () => renderApproachPicker())
 
       const pips = document.createElement('div')
       pips.className = 'status-roll-save-pips'
@@ -976,6 +991,9 @@ function buildStatusRollsPanel() {
       result.className = 'status-roll-save-result'
       result.style.display = 'none'
 
+      // Static display of the printed 1-6 track and how many of those dice
+      // (plus Wardrobe) are about to roll — no arming click, the pool
+      // always rolls in full.
       const renderPips = () => {
         pips.innerHTML = ''
         if (wardrobeBonus > 0) {
@@ -985,48 +1003,25 @@ function buildStatusRollsPanel() {
           badge.textContent = `+${wardrobeBonus} 👕`
           pips.appendChild(badge)
         }
-        // Always show the full 1-6 track from the printed sheet (a Method
-        // can never rate above 6 — handbook's Stat/Method cap), not just
-        // what's currently available: an Overloaded-and-spent die's pip
-        // stays visible (dimmed) instead of vanishing, and circles past the
-        // current rating are locked. Mirrors ApproachDie.tsx.
         for (let i = 0; i < 6; i++) {
           const slotNumber = i + 1
           const isUnlocked = slotNumber <= rating
-          const isAvailable = isUnlocked && i < available
-          const isArmed = isAvailable && i < armed
+          const isAvailable = isUnlocked && i < baseAvailable
+          const isArmed = isAvailable && i < rolledBaseCount
           const pip = document.createElement('span')
-          pip.className = `status-roll-save-pip${isUnlocked ? '' : ' locked'}${isArmed ? ' armed' : ''}${isArmed && armedFading ? ' fading' : ''}${isUnlocked && !isAvailable ? ' spent' : ''}`
+          pip.className = `status-roll-save-pip${isUnlocked ? '' : ' locked'}${isArmed ? ' armed' : ''}${isUnlocked && !isAvailable ? ' spent' : ''}`
           pip.textContent = String(slotNumber)
           pips.appendChild(pip)
         }
-        armedHint.textContent = available <= 0
-          ? (rating > 0 ? 'Exhausted' : 'No dice')
-          : `Armed ${armed} / ${available}`
-        rollBtn.disabled = armed <= 0
+        armedHint.textContent = rollCount <= 0
+          ? (rating > 0 || wardrobeBonus > 0 ? 'Exhausted' : 'No dice')
+          : `Rolling ${rollCount} ${rollCount === 1 ? 'die' : 'dice'}${rolledWardrobeCount > 0 ? ` (${rolledBaseCount} base + ${rolledWardrobeCount} Wardrobe)` : ''}`
+        rollBtn.disabled = rollCount <= 0
       }
-
-      const flashPipsError = () => {
-        pips.classList.add('error-flash')
-        setTimeout(() => pips.classList.remove('error-flash'), 420)
-      }
-
-      pips.addEventListener('click', () => {
-        if (dice) return // already rolled this round — back out to reroll
-        if (armed >= available) { flashPipsError(); return }
-        armed += 1
-        renderPips()
-        scheduleArmedTimers()
-      })
 
       rollBtn.addEventListener('click', () => {
-        if (armed <= 0) return
-        clearArmedTimers()
-        // Wardrobe dice always roll alongside the armed base-pool dice —
-        // "Wardrobe adds dice to that Method's roll only" — but aren't
-        // armed/tracked themselves, so they're added here rather than to
-        // `armed`.
-        dice = rollMethodDice(armed + wardrobeBonus)
+        if (rollCount <= 0) return
+        dice = rollMethodDice(rollCount)
         overloadedSet.clear()
         pips.style.display = 'none'
         armedHint.style.display = 'none'
@@ -1041,11 +1036,13 @@ function buildStatusRollsPanel() {
       const effectiveValue = (value, index) => (overloadedSet.has(index) ? value * 2 : value)
 
       // Total is the single highest effective die, never a sum — see
-      // domain/approachDice.ts.
-      const currentTotal = () => {
+      // domain/approachDice.ts. The Collapse "every roll" modifier (if any)
+      // is added automatically, same as the React Method roller.
+      const rawDieTotal = () => {
         if (!dice || dice.length === 0) return 0
         return Math.max(...dice.map((value, index) => effectiveValue(value, index)))
       }
+      const currentTotal = () => rawDieTotal() + totalAll
 
       const renderDiceChips = () => {
         diceWrap.innerHTML = ''
@@ -1053,13 +1050,21 @@ function buildStatusRollsPanel() {
         const topValue = values.length ? Math.max(...values) : null
         ;(dice ?? []).forEach((value, index) => {
           const isTop = values[index] === topValue
+          const isWardrobeDie = index >= rolledBaseCount
+          // Only one die may be Overloaded per roll, same as the React
+          // Approach die — and each pool (base vs Wardrobe) is only
+          // spendable if that pool still has dice available.
+          const poolAvailable = isWardrobeDie ? wardrobeAvailable : baseAvailable
+          const canOverload = overloadedSet.size === 0 && poolAvailable > 0
           const chip = document.createElement('button')
           chip.className = `status-roll-save-chip${overloadedSet.has(index) ? ' overloaded' : ''}${isTop ? ' top' : ''}`
           chip.setAttribute('data-touch-blocker-ignore', '')
-          chip.disabled = overloadedSet.has(index) || available <= 0
+          chip.disabled = overloadedSet.has(index) || !canOverload
           chip.title = overloadedSet.has(index)
             ? 'Already Overloaded'
-            : 'Tap to Overload: double this die, spend 1 from the Method pool'
+            : (overloadedSet.size > 0
+              ? 'Only one die can be Overloaded per roll'
+              : `Tap to Overload: double this die, spend 1 from the ${isWardrobeDie ? 'Wardrobe' : 'Method'} pool`)
           chip.textContent = `D${METHOD_DIE}: ${value}`
           if (overloadedSet.has(index)) {
             const tag = document.createElement('span')
@@ -1068,10 +1073,18 @@ function buildStatusRollsPanel() {
             chip.appendChild(tag)
           }
           chip.addEventListener('click', () => {
-            if (overloadedSet.has(index) || available <= 0) return
-            spent += 1
-            writeOverloadSpent(field, spent)
-            available = Math.max(0, rating - spent)
+            if (overloadedSet.has(index) || overloadedSet.size > 0) return
+            if (isWardrobeDie) {
+              if (wardrobeAvailable < 1) return
+              wardrobeSpent += 1
+              writeWardrobeOverloadSpent(field, wardrobeSpent)
+              wardrobeAvailable = Math.max(0, wardrobeBonus - wardrobeSpent)
+            } else {
+              if (baseAvailable < 1) return
+              baseSpent += 1
+              writeOverloadSpent(field, baseSpent)
+              baseAvailable = Math.max(0, rating - baseSpent)
+            }
             overloadedSet.add(index)
             renderDiceChips()
           })
@@ -1079,28 +1092,50 @@ function buildStatusRollsPanel() {
         })
         const total = document.createElement('div')
         total.className = 'status-roll-save-total'
-        total.textContent = `Total: ${currentTotal()}`
+        total.textContent = totalAll !== 0
+          ? `Total: ${currentTotal()} (${rawDieTotal()} die ${totalAll > 0 ? '+' : '−'} ${Math.abs(totalAll)} Collapse)`
+          : `Total: ${currentTotal()}`
         diceWrap.appendChild(total)
-        poolHint.textContent = `Overload pool remaining: ${available}/${rating}`
+        poolHint.textContent = `Overload pool remaining: ${baseAvailable}/${rating} base${wardrobeBonus > 0 ? `, ${wardrobeAvailable}/${wardrobeBonus} Wardrobe` : ''}`
       }
 
       applyBtn.addEventListener('click', () => {
         const total = currentTotal()
         const atRollTime = row.roll
         result.style.display = 'block'
+        // The very first Save roll on a row just establishes/confirms the
+        // Set — it never Decays it, pass or fail. Decay only kicks in from
+        // the second roll onward.
+        if (!row.firstRollDone) {
+          row.firstRollDone = true
+          persist()
+          if (total >= atRollTime) {
+            result.setAttribute('data-outcome', 'pass')
+            result.textContent = `SAVED — rolled ${total} vs ${atRollTime}`
+            markCleared(row)
+          } else {
+            result.setAttribute('data-outcome', 'fail')
+            result.textContent = `First Save — rolled ${total} vs ${atRollTime}, no Decay yet`
+          }
+          renderRows()
+          applyBtn.style.display = 'none'
+          return
+        }
         if (total >= atRollTime) {
           result.setAttribute('data-outcome', 'pass')
           result.textContent = `SAVED — rolled ${total} vs ${atRollTime}`
           markCleared(row)
         } else {
-          // The Set drops to the amount the roll missed by (p36), not to
-          // whatever the roll itself came out to.
+          // The Set drops to the amount the roll missed by (p36). The
+          // amount the Set actually decreases by is algebraically equal to
+          // the roll's own total (atRollTime - margin === total), so the
+          // label shows `total`, not the margin.
           const margin = atRollTime - total
           row.roll = margin
           persist()
           target.textContent = `Set Roll: ${row.roll}`
           result.setAttribute('data-outcome', 'fail')
-          result.textContent = `DECAYED -${margin} — rolled ${total} vs ${atRollTime}, now ${row.roll}`
+          result.textContent = `DECAYED -${total} — rolled ${total} vs ${atRollTime}, now ${row.roll}`
         }
         renderRows()
         applyBtn.style.display = 'none'
@@ -1125,6 +1160,12 @@ function buildStatusRollsPanel() {
     rows.forEach((row, idx) => {
       const rowEl = document.createElement('div')
       rowEl.className = 'status-roll-row'
+      // Glow a row "new" (persists until the player gives it a name)
+      // rather than pre-filling the Name field with placeholder text that
+      // had to be deleted every time (see addSetRollRow in
+      // chudVanillaBridge.ts, which now leaves row.name blank).
+      const syncNewGlow = () => rowEl.classList.toggle('status-roll-row-new', !row.name.trim())
+      syncNewGlow()
 
       const dirBtn = document.createElement('button')
       dirBtn.className = 'status-roll-direction'
@@ -1160,7 +1201,10 @@ function buildStatusRollsPanel() {
         dirHoldTimer = setTimeout(() => {
           dirLongPressed = true
           clearDirHold()
-          if (row.direction === 'in') {
+          // No Dice Mode: the Save button/gesture is hidden — players
+          // type their own Set Roll value and decide outcomes at the
+          // table instead.
+          if (row.direction === 'in' && !isNoDiceMode()) {
             openSaveModal(row, persist, renderRows, markCleared)
           }
         }, DIR_HOLD_MS)
@@ -1216,6 +1260,7 @@ function buildStatusRollsPanel() {
             effectInput.readOnly = true
             effectInput.dataset.readonly = '1'
             suggestionsEl.style.display = 'none'
+            syncNewGlow()
             persist()
           })
           suggestionsEl.appendChild(option)
@@ -1241,6 +1286,7 @@ function buildStatusRollsPanel() {
 
       nameInput.addEventListener('input', () => {
         row.name = nameInput.value
+        syncNewGlow()
         const match = byName.get(normalizeName(row.name))
         if (match) {
           row.effect = match.effect
@@ -1271,6 +1317,7 @@ function buildStatusRollsPanel() {
             effectInput.readOnly = true
             effectInput.dataset.readonly = '1'
             suggestionsEl.style.display = 'none'
+            syncNewGlow()
             persist()
           }
         }
@@ -1299,6 +1346,39 @@ function buildStatusRollsPanel() {
       const val = document.createElement('span')
       val.className = 'status-roll-value'
       val.textContent = String(row.roll)
+      val.setAttribute('data-touch-blocker-ignore', '')
+      val.title = 'Tap to type the value directly'
+      // Tapping the value swaps it for a direct-entry number field (same
+      // idea as the HUD HP card) — lets a player type what they rolled at
+      // the table instead of stepping -/+ one at a time. Also opened
+      // automatically for a row an Engram's No Dice Mode "Play" just
+      // created (row.openValueEntry) — the player still has to type what
+      // they actually rolled at the table.
+      const openValueInput = () => {
+        const input = document.createElement('input')
+        input.type = 'number'
+        input.inputMode = 'numeric'
+        input.className = 'status-roll-value-input'
+        input.min = '0'
+        input.max = String(STATUS_ROLL_MAX)
+        input.value = String(row.roll)
+        input.setAttribute('data-touch-blocker-ignore', '')
+        const commit = () => {
+          row.roll = clampStatusRoll(Math.round(Number(input.value)))
+          val.textContent = String(row.roll)
+          persist()
+          if (input.parentNode) input.replaceWith(val)
+        }
+        input.addEventListener('blur', commit)
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') input.blur()
+          if (e.key === 'Escape') { if (input.parentNode) input.replaceWith(val) }
+        })
+        val.replaceWith(input)
+        input.focus()
+        input.select()
+      }
+      val.addEventListener('click', openValueInput)
       const plus = document.createElement('button')
       plus.className = 'status-roll-value-btn'
       plus.textContent = '+'
@@ -1318,6 +1398,13 @@ function buildStatusRollsPanel() {
       valueWrap.appendChild(minus)
       valueWrap.appendChild(val)
       valueWrap.appendChild(plus)
+
+      if (row.openValueEntry) {
+        row.openValueEntry = false
+        persist()
+        // Deferred so the row is actually in the DOM first.
+        setTimeout(openValueInput, 0)
+      }
 
       if (clearedRowIds.has(row.id)) {
         const clearedOverlay = document.createElement('div')
@@ -1547,12 +1634,11 @@ function mountMeters() {
   const gcm = buildGritCollapseMeter(getMeters, setMeters)
 
   // Set Rolls (Status Effects) mounts inside the HP box, directly below the
-  // Chip Sync control. Combat box (CR/FR) has been removed entirely; CR/FR
-  // now render read-only on the standalone AAG page, outside this iframe.
-  // Page 2 (including Damage die) also lives on the AAG page.
-  // Wallet + Reps now live on the standalone MGR page. Reaction Tokens and
-  // the action/reaction Queue have been removed (player side).
-  const { chipSection } = buildCombatPanel()
+  // HP bar. Combat box (CR/FR) has been removed entirely; CR/FR now render
+  // read-only on the standalone AAG page, outside this iframe. Page 2
+  // (including Damage die) also lives on the AAG page. Wallet + Reps now
+  // live on the standalone MGR page. Reaction Tokens, the action/reaction
+  // Queue, and the Chip Sync toggle have all been removed (player side).
   const statusRollsPanel = buildStatusRollsPanel()
   const setRollsAnchor = panel.querySelector('#chud-setrolls-anchor')
   if (setRollsAnchor) {
@@ -1565,11 +1651,6 @@ function mountMeters() {
     gcmAnchor.insertAdjacentElement('afterend', gcm.container)
   } else {
     panel.appendChild(gcm.container)
-  }
-  // Chip Sync mounts inside the HP box, directly below the HP bar.
-  const hpQueueAnchor = panel.querySelector('#chud-hp-queue-anchor')
-  if (hpQueueAnchor) {
-    hpQueueAnchor.insertAdjacentElement('afterend', chipSection)
   }
 
   const refreshAll = () => { gcm.update() }

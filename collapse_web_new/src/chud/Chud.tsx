@@ -100,6 +100,18 @@ export default function Chud() {
   const [engramState, setEngramState] = useState<EngramManagerState>(() =>
     typeof window !== "undefined" ? readEngramState(DECK_BUILDER_KEY) : { equipped: {} }
   );
+  // Staged here (not just inside EngramPanel/EngramBriefWidget state) so
+  // every Method's roll popup shares this same staged slot as its standby
+  // chip. Staging is NOT spending — spendAllEngramCharges already emptied
+  // the Q locally the instant it was staged, so if a popup never activates
+  // it, staging a *different* Engram next (or this component unmounting)
+  // would otherwise strand those charges; onStageForRoller below refunds
+  // whatever was staged-but-unconsumed before replacing it. Declared early
+  // (not where it's used below) since the persistence effect further down
+  // reads/depends on it.
+  const [stagedEngram, setStagedEngram] = useState<{ id: string; name: string; charges: number } | null>(
+    saved?.stagedEngram ?? null
+  );
   const [wardrobeEntries, setWardrobeEntries] = useState(() =>
     typeof window !== "undefined" ? readWardrobeData(WARDROBE_KEY) : []
   );
@@ -279,12 +291,13 @@ export default function Chud() {
         shortRest,
         hasBeenDownedBefore,
         collapsePath,
+        stagedEngram,
       };
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
       // storage unavailable — ignore
     }
-  }, [core, hpCounter, approach, damageDieSize, approachOverloadSpent, approachWardrobeOverloadSpent, ganbareGlassBrokenAt, ganbareSpent, inventorySlots, shortRest, hasBeenDownedBefore, collapsePath]);
+  }, [core, hpCounter, approach, damageDieSize, approachOverloadSpent, approachWardrobeOverloadSpent, ganbareGlassBrokenAt, ganbareSpent, inventorySlots, shortRest, hasBeenDownedBefore, collapsePath, stagedEngram]);
 
   // Cross-tab sync
   useEffect(() => {
@@ -304,6 +317,7 @@ export default function Chud() {
         if (typeof s.hasBeenDownedBefore === "boolean") setHasBeenDownedBefore(s.hasBeenDownedBefore);
         if (s.collapsePath) setCollapsePathState(s.collapsePath);
         if (s.collapseModifiers) setCollapseModifiers(withCollapseModifiers(s.collapseModifiers));
+        if ("stagedEngram" in s) setStagedEngram(s.stagedEngram ?? null);
       } catch {
         // malformed storage — ignore
       }
@@ -334,14 +348,8 @@ export default function Chud() {
 
   // Method roll popup's Engram standby chip (handbook p25: one Engram
   // Stack per action). The HUD's Engram Q long-press (EngramBriefWidget's
-  // onStageForRoller) stages a single Engram id/name/charge-count here;
-  // every Method's roll popup shares this same staged slot as its standby
-  // chip. Staging is NOT spending — spendAllEngramCharges already emptied
-  // the Q locally the instant it was staged, so if a popup never activates
-  // it, staging a *different* Engram next (or this component unmounting)
-  // would otherwise strand those charges; onStageForRoller below refunds
-  // whatever was staged-but-unconsumed before replacing it.
-  const [stagedEngram, setStagedEngram] = useState<{ id: string; name: string; charges: number } | null>(null);
+  // onStageForRoller) stages a single Engram id/name/charge-count here —
+  // state declared above alongside engramState; see that comment.
   const onStageForRoller = useCallback((id: string, name: string, charges: number) => {
     setStagedEngram((prev) => {
       if (prev && prev.id !== id) refundEngramCharges(DECK_BUILDER_KEY, prev.id, prev.charges);
@@ -377,7 +385,7 @@ export default function Chud() {
       const prevHp = hpCounter;
       const nextHp = Math.min(Math.max(prevHp + delta, 0), hpMax);
       const { collapse } = readGlobalMeters();
-      if (queueHpZeroNotificationsIfNeeded(prevHp, nextHp, hasBeenDownedBefore, collapse >= 6)) {
+      if (queueHpZeroNotificationsIfNeeded(prevHp, nextHp, hasBeenDownedBefore, collapse + 1 >= 6)) {
         setHasBeenDownedBefore(true);
       }
       setHpCounterRaw(nextHp);
@@ -397,6 +405,10 @@ export default function Chud() {
         // stale if another notification (e.g. Dig Deep then Full Rest)
         // changed HP/Grit/Collapse while this one still sat pending.
         if (n.effect.setHpToMax) applyHpDelta(hpMax - hpCounter);
+        // Revive sets HP to exactly 1 regardless of what HP currently is
+        // (e.g. a Full Rest accepted first while this hp-zero sat pending
+        // would otherwise leave HP at/near max instead of 1).
+        if (n.effect.reviveHp1) applyHpDelta(1 - hpCounter);
         if (n.effect.gritGainRaw != null || n.effect.gritSetRaw != null) {
           const { grit: currentGrit, collapse: currentCollapse } = readGlobalMeters();
           const maxGrit = maxGritForCollapse(currentCollapse);
@@ -418,7 +430,9 @@ export default function Chud() {
           resetGanbareCharges(STORAGE_KEY);
         }
         if (n.effect.fullEngramRestore) fullRestEngrams(DECK_BUILDER_KEY);
-        if (n.kind === "hp-zero") {
+        // A Narrative Death (Collapse already maxed) has no Collapse Table
+        // left to roll on — only queue it for the ordinary revive case.
+        if (n.kind === "hp-zero" && !n.effect.narrativeDeath) {
           const pathLabel = collapsePath ? `${collapsePath[0].toUpperCase()}${collapsePath.slice(1)}` : null;
           pushNotification(
             "collapse-table",

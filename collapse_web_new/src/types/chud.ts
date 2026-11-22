@@ -102,6 +102,11 @@ export interface SaveState {
   /** Known Skills (handbook v12 p20) — reference list capped at Inference,
    * owned/edited by the Modifiers page. */
   skills?: SkillEntry[];
+  /** The Engram Q's standby chip, staged via a long-press but not yet
+   * activated into a Method roll's Stack — its charges are already spent
+   * from the Q, so this has to survive a HUD iframe reload/navigation or
+   * they're gone for nothing (neither consumed into a roll nor refunded). */
+  stagedEngram?: { id: string; name: string; charges: number } | null;
 }
 
 export type GearSlotEntry = { name: string; units: string; qty: string };

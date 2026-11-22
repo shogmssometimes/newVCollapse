@@ -74,6 +74,12 @@ export function HeaderNotificationsBell({ charSlot }: { charSlot: number }) {
           const hpMax = computeDerived(core, modifiers).hp;
           adjustHpCounter(hpMax - readHpCounter(key), key);
         }
+        // Revive sets HP to exactly 1 (not a +1 delta) — see
+        // reviveHp1 in notifications.ts.
+        if (n.effect.reviveHp1) {
+          const key = chudStateKey(charSlot);
+          adjustHpCounter(1 - readHpCounter(key), key);
+        }
         if (n.effect.gritGainRaw != null || n.effect.gritSetRaw != null) {
           const { grit: currentGrit, collapse: currentCollapse } = readGlobalMeters();
           const maxGrit = maxGritForCollapse(currentCollapse);
@@ -95,7 +101,7 @@ export function HeaderNotificationsBell({ charSlot }: { charSlot: number }) {
           resetGanbareCharges(chudStateKey(charSlot));
         }
         if (n.effect.fullEngramRestore) fullRestEngrams(deckBuilderKey(charSlot));
-        if (n.kind === "hp-zero") {
+        if (n.kind === "hp-zero" && !n.effect.narrativeDeath) {
           const path = readCollapsePath(chudStateKey(charSlot));
           const pathLabel = path ? `${path[0].toUpperCase()}${path.slice(1)}` : null;
           pushNotification(

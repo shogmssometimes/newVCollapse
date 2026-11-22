@@ -34,6 +34,11 @@ export type NotificationEffect = {
    * Collapse Modifiers) can change while this sits pending, which would
    * otherwise make a precomputed delta overshoot or undershoot max. */
   setHpToMax?: boolean;
+  /** hp-zero revive (handbook p54's "revive with 1 HP"): set HP to exactly
+   * 1 at accept time, not a +1 delta — a Full Rest or Dig Deep accepted
+   * while this sat pending could otherwise land HP back near/at max
+   * instead of the intended 1. */
+  reviveHp1?: boolean;
   /** Dig Deep: add this much Grit (the raw roll, before any cap) to
    * whatever Grit actually is at accept time, capped at (6 − current
    * Collapse) — resolved live instead of baking in a capped amount at
@@ -42,8 +47,17 @@ export type NotificationEffect = {
   gritGainRaw?: number;
   /** Full Rest: set Grit to this raw rolled value (not added to whatever
    * Grit currently is), capped at (6 − current Collapse) at accept time,
-   * same staleness reasoning as gritGainRaw. */
+   * same staleness reasoning as gritGainRaw. Also used by grit-zero's
+   * "recover Grit" roll, for the same reason — baking in `{ grit: rolled }`
+   * as a delta on top of whatever Grit is at accept time (rather than
+   * setting it) double-counts if Grit changed from 0 while this sat
+   * pending (e.g. a Full Rest accepted first). */
   gritSetRaw?: number;
+  /** hp-zero queued at Collapse already maxed (handbook v12 p54): this is
+   * a Narrative Death, not a revive — no HP/Collapse effect applies, and
+   * accepting it doesn't queue "Roll on Collapse Table" (there's no table
+   * left to roll on). */
+  narrativeDeath?: boolean;
 };
 
 export type NotificationChoice = { key: string; label: string };
@@ -202,7 +216,7 @@ export function queueHpZeroNotificationsIfNeeded(
       collapseMaxed
         ? "Collapse is maxed. This is a Narrative Death (handbook p54)."
         : "Accept to apply +1 Collapse and revive with 1 HP, or cancel to clear without it.",
-      collapseMaxed ? {} : { collapse: 1, hp: 1 }
+      collapseMaxed ? { narrativeDeath: true } : { collapse: 1, reviveHp1: true }
     );
   }
   if (!hasBeenDownedBefore) {

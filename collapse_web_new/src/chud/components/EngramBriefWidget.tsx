@@ -229,7 +229,12 @@ export function EngramBriefWidget({
       }}
       onPointerUp={e => {
         const start = touchStart.current;
-        const dx = start !== null ? e.clientX - start.x : 0;
+        // Defensive guard: if a child element (e.g. the No Dice Mode Play
+        // button) stopped propagation on pointerdown but this pointerup
+        // still bubbles up, touchStart.current never got set for this
+        // gesture — bail instead of falling through to the tap-charges branch.
+        if (start === null) return;
+        const dx = e.clientX - start.x;
         const fired = holdFired.current;
         cancelHold();
         holdFired.current = false;
@@ -324,6 +329,7 @@ export function EngramBriefWidget({
         <button
           type="button"
           onPointerDown={e => e.stopPropagation()}
+          onPointerUp={e => e.stopPropagation()}
           onClick={e => { e.stopPropagation(); playEngram(); }}
           style={{
             marginTop: 2,

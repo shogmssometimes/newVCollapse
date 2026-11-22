@@ -22,7 +22,7 @@ const INPUT: React.CSSProperties = {
   borderRadius: 4,
   color: "var(--text)",
   padding: "0.35rem 0.5rem",
-  fontSize: "0.9rem",
+  fontSize: "16px", // iOS zooms the page on tap below 16px
   width: "100%",
 };
 
@@ -340,10 +340,11 @@ type CounterProps = {
   onMaxChange?: (v: number) => void;
   large?: boolean;
   noMax?: boolean;
+  maxModifier?: number; // shows e.g. "(−2)" next to Max, like WtControl's modifier badge
 };
 
 const Counter: React.FC<CounterProps> = ({
-  label, value, max, accent, onChange, onMaxChange, large, noMax,
+  label, value, max, accent, onChange, onMaxChange, large, noMax, maxModifier,
 }) => {
   const elRef = useRef<HTMLDivElement>(null);
   const [editingVal, setEditingVal] = useState(false);
@@ -456,6 +457,9 @@ const Counter: React.FC<CounterProps> = ({
                 {max}
               </span>
             )}
+            {!!maxModifier && (
+              <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.72rem" }}>({maxModifier > 0 ? "+" : "−"}{Math.abs(maxModifier)})</span>
+            )}
           </>
         )}
       </div>
@@ -495,7 +499,7 @@ const ModStepper: React.FC<{ label: string; value: number; onChange: (v: number)
           type="button"
           aria-label={`Decrease ${label}`}
           onClick={() => onChange(safe - 1)}
-          style={{ width: 28, height: 28, minWidth: 28, flexShrink: 0, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "#fff", fontSize: "0.95rem", fontWeight: 700, cursor: "pointer" }}
+          style={{ width: 34, height: 34, minWidth: 34, flexShrink: 0, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "#fff", fontSize: "1rem", fontWeight: 700, cursor: "pointer" }}
         >−</button>
         <input
           type="number"
@@ -508,7 +512,7 @@ const ModStepper: React.FC<{ label: string; value: number; onChange: (v: number)
           type="button"
           aria-label={`Increase ${label}`}
           onClick={() => onChange(safe + 1)}
-          style={{ width: 28, height: 28, minWidth: 28, flexShrink: 0, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "#fff", fontSize: "0.95rem", fontWeight: 700, cursor: "pointer" }}
+          style={{ width: 34, height: 34, minWidth: 34, flexShrink: 0, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "#fff", fontSize: "1rem", fontWeight: 700, cursor: "pointer" }}
         >+</button>
       </div>
     </div>
@@ -590,11 +594,11 @@ const WtControl: React.FC<{ base: number; modifier: number; onBaseChange: (v: nu
       <div style={{ display: "flex", gap: 4 }}>
         <button
           onClick={(e) => { e.stopPropagation(); setEffective(effective - 1); }}
-          style={{ flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, color: "var(--error)", fontSize: "0.88rem", padding: "0.22rem 0", cursor: "pointer" }}
+          style={{ flex: 1, minWidth: 36, minHeight: 36, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, color: "var(--error)", fontSize: "1.1rem", padding: "0.22rem 0", cursor: "pointer" }}
         >−</button>
         <button
           onClick={(e) => { e.stopPropagation(); setEffective(effective + 1); }}
-          style={{ flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, color: "#e9c46a", fontSize: "0.88rem", padding: "0.22rem 0", cursor: "pointer" }}
+          style={{ flex: 1, minWidth: 36, minHeight: 36, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, color: "#e9c46a", fontSize: "1.1rem", padding: "0.22rem 0", cursor: "pointer" }}
         >+</button>
       </div>
     </div>
@@ -834,7 +838,7 @@ const SetRollRowView: React.FC<{
             type="number"
             inputMode="numeric"
             defaultValue={row.roll}
-            style={{ width: 34, textAlign: "center", fontSize: "0.78rem", fontWeight: 800, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 4, color: "#6ac7ff", padding: "2px 2px" }}
+            style={{ width: 44, textAlign: "center", fontSize: "16px", fontWeight: 800, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 4, color: "#6ac7ff", padding: "2px 2px" }}
             onBlur={(e) => { onUpdate({ ...row, roll: clampStatusRoll(Number(e.target.value)) }); setEditingRoll(false); }}
             onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
           />
@@ -920,6 +924,8 @@ type EditRowProps = {
 
 const EditRow: React.FC<EditRowProps> = ({ c, index, isLast, onChange, onRemove, onMoveUp, onMoveDown, partySelected, onPartyToggle }) => {
   const [editingName, setEditingName] = useState(false);
+  const [noDice, setNoDice] = useState(() => isNoDiceMode());
+  useEffect(() => subscribeNoDiceMode(() => setNoDice(isNoDiceMode())), []);
 
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "0.9rem 1rem", marginBottom: "0.55rem" }}>
@@ -930,7 +936,7 @@ const EditRow: React.FC<EditRowProps> = ({ c, index, isLast, onChange, onRemove,
         {editingName ? (
           <input
             autoFocus
-            style={{ flex: 1, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.22)", borderRadius: 4, color: "#f8f9fa", padding: "0.3rem 0.5rem", fontSize: "0.95rem" }}
+            style={{ flex: 1, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.22)", borderRadius: 4, color: "#f8f9fa", padding: "0.3rem 0.5rem", fontSize: "16px" }}
             defaultValue={c.name}
             onBlur={(e) => { onChange({ ...c, name: e.target.value.trim() || c.name }); setEditingName(false); }}
             onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
@@ -994,7 +1000,8 @@ const EditRow: React.FC<EditRowProps> = ({ c, index, isLast, onChange, onRemove,
               border: "1px solid rgba(255,255,255,0.12)",
               borderRadius: 6,
               color: index === 0 ? "rgba(255,255,255,0.3)" : "#f8f9fa",
-              padding: "0.25rem 0.5rem",
+              minWidth: 36,
+              minHeight: 36,
               cursor: index === 0 ? "default" : "pointer",
             }}
           >
@@ -1008,7 +1015,8 @@ const EditRow: React.FC<EditRowProps> = ({ c, index, isLast, onChange, onRemove,
               border: "1px solid rgba(255,255,255,0.12)",
               borderRadius: 6,
               color: isLast ? "rgba(255,255,255,0.3)" : "#f8f9fa",
-              padding: "0.25rem 0.5rem",
+              minWidth: 36,
+              minHeight: 36,
               cursor: isLast ? "default" : "pointer",
             }}
           >
@@ -1017,7 +1025,7 @@ const EditRow: React.FC<EditRowProps> = ({ c, index, isLast, onChange, onRemove,
           <button
             onClick={onRemove}
             aria-label="Remove"
-            style={{ background: "none", border: "none", color: "rgba(255,107,107,0.55)", cursor: "pointer", fontSize: "1rem", padding: "0.15rem 0.35rem", lineHeight: 1 }}
+            style={{ background: "rgba(255,107,107,0.08)", border: "1px solid rgba(255,107,107,0.25)", borderRadius: 6, color: "rgba(255,107,107,0.75)", cursor: "pointer", fontSize: "1rem", minWidth: 36, minHeight: 36, lineHeight: 1 }}
           >✕</button>
         </div>
       </div>
@@ -1068,11 +1076,29 @@ const EditRow: React.FC<EditRowProps> = ({ c, index, isLast, onChange, onRemove,
             const n = Number(raw);
             if (!Number.isNaN(n)) onChange({ ...c, rdy: n });
           }}
-          style={{ ...INPUT, maxWidth: 120 }}
+          style={{ ...INPUT, maxWidth: 120, fontSize: "16px" }}
         />
         <div style={{ color: "var(--muted)", fontSize: "0.75rem", marginTop: 6 }}>
-          Start Fight rolls 1d10 + RDY for enemies; players' Readiness result is typed in directly.
+          {noDice
+            ? "No Dice Mode: Start Fight rolls nothing — type each combatant's Readiness result below before starting."
+            : "Start Fight rolls 1d10 + RDY for enemies; players' Readiness result is typed in directly."}
         </div>
+        {noDice && (
+          <div style={{ marginTop: 8 }}>
+            <span style={{ display: "block", fontSize: "0.82rem", color: "var(--muted)", marginBottom: 5 }}>Readiness result (table roll)</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={c.readinessResult ?? ""}
+              placeholder="—"
+              onChange={(e) => {
+                const raw = e.target.value;
+                onChange({ ...c, readinessResult: raw.trim() === "" ? undefined : Number(raw) });
+              }}
+              style={{ ...INPUT, maxWidth: 120, fontSize: "16px" }}
+            />
+          </div>
+        )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
@@ -1160,13 +1186,18 @@ const EditRow: React.FC<EditRowProps> = ({ c, index, isLast, onChange, onRemove,
                 type="text"
                 inputMode="numeric"
                 pattern="-?[0-9]*"
-                value={c.fumbleNumber ?? ""}
+                // Stored/compared as a magnitude (V+I+P), same convention the
+                // player app uses — displayed with a minus sign below, but
+                // always fed to computeFumbleWounds as a positive number so
+                // a GM pasting a negative value (as shown on the player app)
+                // doesn't turn every miss into a Fumble.
+                value={typeof c.fumbleNumber === "number" ? -Math.abs(c.fumbleNumber) : ""}
                 placeholder="—"
                 onChange={(e) => {
                   const raw = e.target.value;
-                  if (raw.trim() === "") { onChange({ ...c, fumbleNumber: undefined }); return; }
+                  if (raw.trim() === "" || raw.trim() === "-") { onChange({ ...c, fumbleNumber: undefined }); return; }
                   const n = Number(raw);
-                  if (!Number.isNaN(n)) onChange({ ...c, fumbleNumber: n });
+                  if (!Number.isNaN(n)) onChange({ ...c, fumbleNumber: Math.abs(n) });
                 }}
                 style={INPUT}
               />
@@ -1229,12 +1260,15 @@ const CeRollPopup: React.FC<{ combatant: Combatant; methodKey: MethodKey; onClos
   const [dice] = useState<number[]>(() => rollApproachDice(rating).dice.map((d) => d.total));
   const [overloaded, setOverloaded] = useState(false);
   const [flanking, setFlanking] = useState(false);
+  const [attacking, setAttacking] = useState(true); // Fumble only applies to attackers, not defenders
   const [view, setView] = useState<"roll" | "margin-input" | "margin-result" | "damage">("roll");
   const [oppositionInput, setOppositionInput] = useState("");
   const [margin, setMargin] = useState<number | null>(null);
   const [damageDice, setDamageDice] = useState<number[]>([]);
   const [extraWoundDice, setExtraWoundDice] = useState(0);
-  const [woundValue, setWoundValue] = useState(String(effWt(combatant)));
+  // The CE's own WT isn't relevant here — Roll Wounds targets whichever
+  // player the CE hit, so the GM types that player's WT in fresh.
+  const [woundValue, setWoundValue] = useState("");
 
   const baseDie = dice.length > 0 ? Math.max(...dice) : 0;
   const baseDieIndex = dice.indexOf(baseDie);
@@ -1258,8 +1292,8 @@ const CeRollPopup: React.FC<{ combatant: Combatant; methodKey: MethodKey; onClos
     setView("damage");
   };
 
-  const fumbleWounds = margin !== null && margin < 0 && typeof combatant.fumbleNumber === "number"
-    ? computeFumbleWounds(margin, combatant.fumbleNumber)
+  const fumbleWounds = margin !== null && margin < 0 && attacking && typeof combatant.fumbleNumber === "number"
+    ? computeFumbleWounds(margin, Math.abs(combatant.fumbleNumber))
     : 0;
 
   const woundThresholdNumber = Number(woundValue);
@@ -1300,6 +1334,16 @@ const CeRollPopup: React.FC<{ combatant: Combatant; methodKey: MethodKey; onClos
               <input type="checkbox" checked={flanking} onChange={(e) => setFlanking(e.target.checked)} style={{ width: 20, height: 20 }} />
               Flanking +1
             </label>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                onClick={() => setAttacking(true)}
+                style={{ flex: 1, padding: "0.5rem", borderRadius: 8, fontSize: "0.82rem", cursor: "pointer", border: `1px solid ${attacking ? "rgba(99,160,255,0.5)" : "rgba(255,255,255,0.12)"}`, background: attacking ? "rgba(99,160,255,0.18)" : "rgba(255,255,255,0.04)", color: attacking ? "var(--accent)" : "var(--muted)" }}
+              >Attacking</button>
+              <button
+                onClick={() => setAttacking(false)}
+                style={{ flex: 1, padding: "0.5rem", borderRadius: 8, fontSize: "0.82rem", cursor: "pointer", border: `1px solid ${!attacking ? "rgba(99,160,255,0.5)" : "rgba(255,255,255,0.12)"}`, background: !attacking ? "rgba(99,160,255,0.18)" : "rgba(255,255,255,0.04)", color: !attacking ? "var(--accent)" : "var(--muted)" }}
+              >Defending</button>
+            </div>
             <div style={{ fontSize: "1.3rem", fontWeight: 800, textAlign: "center" }}>
               Total: {displayTotal}
               {(totalAllMod !== 0 || flankBonus !== 0 || overloaded) && (
@@ -1335,8 +1379,8 @@ const CeRollPopup: React.FC<{ combatant: Combatant; methodKey: MethodKey; onClos
 
         {view === "margin-result" && margin !== null && (
           <>
-            <div style={{ textAlign: "center", fontSize: "2rem", fontWeight: 800, color: margin > 0 ? "var(--accent-influence)" : "var(--error)" }}>
-              {margin > 0 ? `+${margin} HIT` : `${margin} MISS`}
+            <div style={{ textAlign: "center", fontSize: "2rem", fontWeight: 800, color: margin > 0 ? "var(--accent-influence)" : margin === 0 ? "var(--muted)" : "var(--error)" }}>
+              {margin > 0 ? `+${margin} HIT` : margin === 0 ? "0 — TIE" : `${margin} MISS`}
             </div>
             {margin > 0 && (
               <>
@@ -1353,7 +1397,7 @@ const CeRollPopup: React.FC<{ combatant: Combatant; methodKey: MethodKey; onClos
             )}
             {margin < 0 && fumbleWounds > 0 && (
               <div style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, padding: "0.6rem", fontSize: "0.82rem", color: "#f87171" }}>
-                Fumble! Missed past its Fumble Number ({combatant.fumbleNumber}) — {fumbleWounds} Wound{fumbleWounds === 1 ? "" : "s"} to {combatant.name}.
+                Fumble! Missed past its Fumble Number ({-Math.abs(combatant.fumbleNumber ?? 0)}) — {fumbleWounds} Wound{fumbleWounds === 1 ? "" : "s"} to {combatant.name}.
               </div>
             )}
           </>
@@ -1523,6 +1567,7 @@ const RunCard: React.FC<RunCardProps> = ({ c, index, total, onChange, onPrev, on
               label="HP" value={c.hp} max={effMaxHp(c)} accent="var(--accent-influence)"
               onChange={(v) => onChange({ ...c, hp: v })}
               onMaxChange={(v) => onChange({ ...c, maxHp: Math.max(1, v - (c.modifiers?.maxHp ?? 0)), hp: Math.min(c.hp, v) })}
+              maxModifier={c.modifiers?.maxHp ?? 0}
               large
             />
             <WtControl
@@ -1537,14 +1582,13 @@ const RunCard: React.FC<RunCardProps> = ({ c, index, total, onChange, onPrev, on
             </div>
             {noDice ? (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-                {METHOD_KEYS.map((k) => {
+                {METHOD_KEYS.filter((k) => effMethodDice(c, k) > 0).map((k) => {
                   const n = effMethodDice(c, k);
                   const spent = c.spentMethods?.[k] ?? [];
                   return (
                     <div key={k} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <span style={{ fontSize: "0.72rem", color: n > 0 ? "var(--text)" : "rgba(255,255,255,0.3)" }}>{METHOD_LABELS[k]}</span>
+                      <span style={{ fontSize: "0.72rem", color: "var(--text)" }}>{METHOD_LABELS[k]}</span>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                        {n <= 0 && <span style={{ fontSize: "0.68rem", color: "rgba(255,255,255,0.25)" }}>—</span>}
                         {Array.from({ length: n }, (_, i) => {
                           const isSpent = !!spent[i];
                           return (
@@ -1570,23 +1614,28 @@ const RunCard: React.FC<RunCardProps> = ({ c, index, total, onChange, onPrev, on
                     </div>
                   );
                 })}
+                {METHOD_KEYS.every((k) => effMethodDice(c, k) <= 0) && (
+                  <span style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.3)" }}>No Method dice set.</span>
+                )}
               </div>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
-                {METHOD_KEYS.map((k) => {
+                {METHOD_KEYS.filter((k) => effMethodDice(c, k) > 0).map((k) => {
                   const n = effMethodDice(c, k);
                   return (
                     <button
                       key={k}
-                      disabled={n <= 0}
                       onClick={() => setRollMethod(k)}
-                      style={{ background: "rgba(99,160,255,0.08)", border: "1px solid rgba(99,160,255,0.22)", borderRadius: 8, color: n > 0 ? "var(--accent)" : "rgba(255,255,255,0.25)", padding: "0.5rem 0.3rem", fontSize: "0.78rem", cursor: n > 0 ? "pointer" : "default" }}
+                      style={{ background: "rgba(99,160,255,0.08)", border: "1px solid rgba(99,160,255,0.22)", borderRadius: 8, color: "var(--accent)", padding: "0.5rem 0.3rem", fontSize: "0.78rem", cursor: "pointer" }}
                     >
                       {METHOD_LABELS[k]}<br />
                       <span style={{ fontSize: "0.68rem", opacity: 0.8 }}>{n}d10</span>
                     </button>
                   );
                 })}
+                {METHOD_KEYS.every((k) => effMethodDice(c, k) <= 0) && (
+                  <span style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.3)" }}>No Method dice set.</span>
+                )}
               </div>
             )}
             {(typeof c.fumbleNumber === "number" || (c.modifiers?.wt ?? 0) !== 0 || (c.modifiers?.totalAttackDefense ?? 0) !== 0 || (c.modifiers?.totalAll ?? 0) !== 0) && (

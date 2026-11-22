@@ -22,6 +22,12 @@ html, body, #root {
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   -webkit-user-select: none;
+  /* The HUD is a standalone iframe document — it never loads the main
+     app's index.css, so its own long-press targets (Total/Confirm, HP
+     card, notification rows, Engram Q, Grit/Collapse bar) need their own
+     callout/selection suppression or iOS shows the text-magnifier/copy
+     menu mid-gesture instead of firing the press. */
+  -webkit-touch-callout: none;
 }
 
 html {

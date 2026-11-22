@@ -16,6 +16,7 @@ import {
   chudUiKey,
   hideUnusedMethodsKey,
 } from '../utils/slotKeys'
+import { clearAllPersistedRolls } from '../utils/approachRollPersistence'
 
 export const SLOT_DECK_KEYS: Record<number, string> = {
   1: deckBuilderKey(1),
@@ -95,6 +96,7 @@ const CharMgmt: React.FC = () => {
     localStorage.removeItem(combatKey(slotNum))
     localStorage.removeItem(chudUiKey(slotNum))
     localStorage.removeItem(hideUnusedMethodsKey(slotNum))
+    clearAllPersistedRolls(slotNum)
     const updatedMeta = [...slotMeta]
     updatedMeta[slotNum - 1] = { name: '' }
     setSlotMeta(updatedMeta)
@@ -281,6 +283,13 @@ const CharMgmt: React.FC = () => {
         const updatedHasData = [...slotHasData]
         updatedHasData[slotNum - 1] = !!(data.slotData || data.deckState)
         setSlotHasData(updatedHasData)
+
+        // Whatever roll state the slot previously had (if any) no longer
+        // matches what was just restored — e.g. the imported chudState may
+        // have different stats, shrinking a Method's pool below a stale
+        // persisted roll's dice count (see the staleness check this same
+        // fix family added to ApproachDie.tsx).
+        clearAllPersistedRolls(slotNum)
 
         setImportSuccess(`Imported "${name}" into slot ${slotNum}.`)
       } catch {

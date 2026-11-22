@@ -4,10 +4,17 @@ import { createPortal } from "react-dom"
 import type { ApproachDieResult, ApproachRollResult, DieSides } from "../../domain/approachDice"
 import { rollFlatDice, computeFumbleWounds, useSkillReroll } from "../../domain/approachDice"
 import { addSetRollRow, readGlobalMeters, spendGrit } from "../../utils/chudVanillaBridge"
-import { pushNotification, removeNotification } from "../../domain/notifications"
+import { pushNotification, removeNotification, hasPendingNotification } from "../../domain/notifications"
 import { STAT_AND_METHOD_MAX } from "../../domain/coreApproachMap"
 import { STANDARD_LONG_PRESS_MS } from "../../utils/gestureConstants"
 import { lockScroll, unlockScroll } from "../../utils/scrollLock"
+import {
+  currentChudSlot,
+  loadPersistedRoll,
+  rollPersistKey,
+  ROLLS_CLEARED_EVENT,
+  savePersistedRoll,
+} from "../../utils/approachRollPersistence"
 
 export type ApproachDieRollResult = ApproachRollResult
 
@@ -33,51 +40,9 @@ let activePopupCloseRef: (() => void) | null = null
 // Confirmed/sent to Margin — from that point everything it represents is
 // already durably persisted elsewhere (the spent Overload pool, the
 // consumed Engram charges), so there's nothing left worth surviving a
-// reload.
-function currentChudSlot(): number {
-  try {
-    const n = parseInt(new URLSearchParams(window.location.search).get("slot") ?? "1", 10)
-    return Number.isFinite(n) && n > 0 ? n : 1
-  } catch {
-    return 1
-  }
-}
-
-type PersistedRoll = {
-  result: ApproachDieRollResult
-  pendingOverload: number[]
-  engramStack: { id: string; name: string; rolls: number[] } | null
-}
-
-function rollPersistKey(label: string): string {
-  return `chud.approachRoll.v1.slot${currentChudSlot()}.${label}`
-}
-
-function loadPersistedRoll(label: string): PersistedRoll | null {
-  try {
-    const raw = window.localStorage.getItem(rollPersistKey(label))
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<PersistedRoll> | null
-    if (!parsed || typeof parsed !== "object" || !parsed.result) return null
-    return {
-      result: parsed.result,
-      pendingOverload: Array.isArray(parsed.pendingOverload) ? parsed.pendingOverload : [],
-      engramStack: parsed.engramStack ?? null,
-    }
-  } catch {
-    return null
-  }
-}
-
-function savePersistedRoll(label: string, data: PersistedRoll | null): void {
-  try {
-    const key = rollPersistKey(label)
-    if (!data || !data.result) window.localStorage.removeItem(key)
-    else window.localStorage.setItem(key, JSON.stringify(data))
-  } catch {
-    // storage unavailable — ignore
-  }
-}
+// reload. See `../../utils/approachRollPersistence` for the persistence
+// helpers themselves (shared with CharMgmt.tsx's slot delete/import, which
+// need to discard stale rolls without importing this whole component).
 
 const ROLL_ANIM_TICKS = 8
 const ROLL_ANIM_INTERVAL_MS = 60
@@ -229,8 +194,22 @@ export function ApproachDie({
 }) {
   const wardrobeAvail = wardrobeAvailable ?? wardrobeBonus
   // Restored once per mount — see the "unresolved roll persistence" doc
-  // comment near loadPersistedRoll/savePersistedRoll above.
-  const [initialPersistedRoll] = useState(() => loadPersistedRoll(label))
+  // comment near loadPersistedRoll/savePersistedRoll above. A persisted
+  // roll is only trustworthy if it was rolled from the SAME pool size
+  // this Method currently has; if a stat drop (e.g. lower Personality)
+  // shrank the pool since the roll was made, the extra persisted dice
+  // would let a since-removed die be doubled/Confirmed for a free
+  // Overload — so discard it instead of restoring it.
+  const [initialPersistedRoll] = useState(() => {
+    const persisted = loadPersistedRoll(label)
+    if (!persisted) return null
+    const expectedPoolMax = Math.min(STAT_AND_METHOD_MAX, Math.max(0, available) + Math.max(0, wardrobeAvail))
+    if (persisted.result.dice.length !== expectedPoolMax) {
+      savePersistedRoll(label, null)
+      return null
+    }
+    return persisted
+  })
   const [errorFlash, setErrorFlash] = useState(false)
   const [result, setResult] = useState<ApproachDieRollResult | null>(initialPersistedRoll?.result ?? null)
   // Whether the popup is actually shown right now — distinct from having a
@@ -241,6 +220,13 @@ export function ApproachDie({
   // Method-row press handler in ApproachPanel.tsx that reopens instead of
   // re-rolling when an unresolved result is already sitting here.
   const [popupVisible, setPopupVisible] = useState(false)
+  // The backdrop that eats the "tap outside to dismiss" gesture (see the
+  // popup's createPortal render below) must leave a hole over this
+  // Method's own box, since re-pressing it while the popup is open is a
+  // legitimate way to arm a new roll (handlePointerDown isn't gated on
+  // popupVisible) — tracked as a rect so the backdrop can be split into
+  // bands around it instead of covering it.
+  const [boxRect, setBoxRect] = useState<DOMRect | null>(null)
   const [pendingOverload, setPendingOverload] = useState<Set<number>>(() => new Set(initialPersistedRoll?.pendingOverload ?? []))
   const [resolved, setResolved] = useState(false)
   const [rolling, setRolling] = useState(false)
@@ -299,8 +285,16 @@ export function ApproachDie({
   const [ignoreOverloadSpend, setIgnoreOverloadSpend] = useState(false) // "Ignore Overload"
   const [gritRerollUsed, setGritRerollUsed] = useState(false) // "Reroll" — once per roll, after a shown miss
   const [grit, setGrit] = useState(() => readGlobalMeters().grit)
+  // The Grit Menu's own spendGrit silently refuses while a grit-zero
+  // notification is pending (same guard as tapping the Grit bar), so the
+  // buttons need to visually disable too — otherwise they look usable but
+  // do nothing (see spendGrit in chudVanillaBridge).
+  const [gritZeroPending, setGritZeroPending] = useState(() => hasPendingNotification("grit-zero"))
   useEffect(() => {
-    const onStorage = () => setGrit(readGlobalMeters().grit)
+    const onStorage = () => {
+      setGrit(readGlobalMeters().grit)
+      setGritZeroPending(hasPendingNotification("grit-zero"))
+    }
     window.addEventListener("storage", onStorage)
     return () => window.removeEventListener("storage", onStorage)
   }, [])
@@ -359,6 +353,12 @@ export function ApproachDie({
   const resolveOverloadIfNeeded = useCallback(() => {
     if (resolvedRef.current) return
     resolvedRef.current = true
+    // Clear the persisted copy of this roll before spending, not after —
+    // the save-on-change effect below would otherwise still be the one
+    // that gets around to it (on the next render), leaving a window where
+    // another tab's storage listener (see below) could read it as still
+    // live and let that tab's own Confirm double-spend the same Overload.
+    savePersistedRoll(label, null)
     // Grit Menu's "Ignore Overload": the die Overloaded this roll keeps its
     // doubled value (already reflected in dieMax/displayTotal below) but
     // isn't actually spent from its pool.
@@ -373,7 +373,7 @@ export function ApproachDie({
       resolvedOverloadRef.current = { base: baseCount, wardrobe: wardrobeCount }
     }
     setResolved(true)
-  }, [onOverload, pendingOverload, available, ignoreOverloadSpend])
+  }, [label, onOverload, pendingOverload, available, ignoreOverloadSpend])
 
   const closePopup = useCallback(() => {
     // Closing the popup (via the X button or tapping outside) now ONLY
@@ -409,6 +409,50 @@ export function ApproachDie({
     savePersistedRoll(label, { result, pendingOverload: Array.from(pendingOverload), engramStack })
   }, [label, result, pendingOverload, engramStack, resolved])
 
+  // Two tabs open on the same slot can both have the same unresolved roll
+  // loaded (each from its own mount-time read of localStorage) — without
+  // this, both could independently long-press Confirm and each call
+  // onOverload, double-spending the same Overload dice. A real cross-tab
+  // "storage" event fires here when the OTHER tab's Confirm clears this
+  // Method's persist key (see resolveOverloadIfNeeded's early clear
+  // above), so treat that the same as having resolved it locally —
+  // locking this tab's popup instead of letting its own Confirm still
+  // spend again.
+  useEffect(() => {
+    if (resolvedRef.current || !result) return
+    const key = rollPersistKey(label)
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== key) return
+      if (event.newValue) return // still live — not a Confirm-elsewhere clear
+      resolvedRef.current = true
+      setResolved(true)
+    }
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
+  }, [label, result])
+
+  // Full Rest (Overload reset) / slot delete / slot import / new character
+  // can all invalidate an unresolved roll this same mounted instance is
+  // still holding in memory — clearAllPersistedRolls broadcasts this event
+  // alongside wiping localStorage so a live instance (the HUD doesn't
+  // unmount for Full Rest) discards the stale roll too, instead of only
+  // losing it to a future reload.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ slot: number }>).detail
+      if (detail && detail.slot !== currentChudSlot()) return
+      resolvedRef.current = false
+      setResult(null)
+      setPendingOverload(new Set())
+      setEngramStack(null)
+      setResolved(false)
+      setPopupVisible(false)
+      if (activePopupCloseRef === closePopup) activePopupCloseRef = null
+    }
+    window.addEventListener(ROLLS_CLEARED_EVENT, handler)
+    return () => window.removeEventListener(ROLLS_CLEARED_EVENT, handler)
+  }, [closePopup])
+
   // The result popup stays open until the player dismisses it (tap outside
   // or the close button) — it never times out on its own. The popup is
   // rendered via createPortal into document.body, physically outside
@@ -434,6 +478,23 @@ export function ApproachDie({
     document.addEventListener("pointerdown", handleOutside, true)
     return () => document.removeEventListener("pointerdown", handleOutside, true)
   }, [popupVisible, closePopup])
+
+  // Keeps boxRect current while the popup (and its backdrop) is up, so the
+  // hole tracks the box through layout shifts, scrolling, and resizes.
+  useEffect(() => {
+    if (!popupVisible) {
+      setBoxRect(null)
+      return
+    }
+    const update = () => setBoxRect(boxRef.current?.getBoundingClientRect() ?? null)
+    update()
+    window.addEventListener("resize", update)
+    window.addEventListener("scroll", update, true)
+    return () => {
+      window.removeEventListener("resize", update)
+      window.removeEventListener("scroll", update, true)
+    }
+  }, [popupVisible])
 
   const vibrate = (ms: number) => {
     if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(ms)
@@ -1109,51 +1170,52 @@ export function ApproachDie({
   // Grit Menu (handbook p40) — shown both in the result view (before Margin
   // is started) and the margin-result view (where Reroll becomes relevant,
   // once a miss is shown) rather than duplicating the JSX in both places.
+  const gritZeroHint = "Resolve Grit reached 0 first"
   const gritMenuEl = !noDiceMode && (
     <div className="approach-die-grit-menu" aria-label="Grit Menu">
       <span className="approach-die-grit-menu-label">Grit</span>
       <button
         type="button"
         className="approach-die-grit-btn"
-        disabled={gritMenuLocked || gritBonusDie !== null || grit <= 0}
+        disabled={gritMenuLocked || gritBonusDie !== null || grit <= 0 || gritZeroPending}
         onClick={(event) => { event.stopPropagation(); gritAddD10() }}
-        title="Spend 1 Grit: roll 1d10 and add it to the Total (once per roll) — still usable on the Margin screen"
+        title={gritZeroPending ? gritZeroHint : "Spend 1 Grit: roll 1d10 and add it to the Total (once per roll) — still usable on the Margin screen"}
       >
         +1d10
       </button>
       <button
         type="button"
         className="approach-die-grit-btn"
-        disabled={gritMenuLocked || pendingOverload.size === 0 || ignoreOverloadSpend || grit <= 0}
+        disabled={gritMenuLocked || pendingOverload.size === 0 || ignoreOverloadSpend || grit <= 0 || gritZeroPending}
         onClick={(event) => { event.stopPropagation(); gritIgnoreOverload() }}
-        title="Spend 1 Grit: the die Overloaded this roll doesn't count as spent — refunds it if it was already spent"
+        title={gritZeroPending ? gritZeroHint : "Spend 1 Grit: the die Overloaded this roll doesn't count as spent — refunds it if it was already spent"}
       >
         Ignore Overload
       </button>
       <button
         type="button"
         className="approach-die-grit-btn"
-        disabled={gritRerollUsed || grit <= 0 || margin === null || margin >= 0}
+        disabled={gritRerollUsed || grit <= 0 || margin === null || margin >= 0 || gritZeroPending}
         onClick={(event) => { event.stopPropagation(); gritReroll() }}
-        title="Spend 1 Grit: reroll the whole pool once (must keep the new result)"
+        title={gritZeroPending ? gritZeroHint : "Spend 1 Grit: reroll the whole pool once (must keep the new result)"}
       >
         Reroll
       </button>
       <button
         type="button"
         className="approach-die-grit-btn"
-        disabled={grit <= 0}
+        disabled={grit <= 0 || gritZeroPending}
         onClick={(event) => { event.stopPropagation(); gritAddStatus("Hidden") }}
-        title="Spend 1 Grit: adds Hidden to Set Rolls — this Total is your Set value"
+        title={gritZeroPending ? gritZeroHint : "Spend 1 Grit: adds Hidden to Set Rolls — this Total is your Set value"}
       >
         Hidden
       </button>
       <button
         type="button"
         className="approach-die-grit-btn"
-        disabled={grit <= 0}
+        disabled={grit <= 0 || gritZeroPending}
         onClick={(event) => { event.stopPropagation(); gritAddStatus("Reckless") }}
-        title="Spend 1 Grit: adds Reckless to Set Rolls — this Total is your Set value"
+        title={gritZeroPending ? gritZeroHint : "Spend 1 Grit: adds Reckless to Set Rolls — this Total is your Set value"}
       >
         Reckless
       </button>
@@ -1280,12 +1342,54 @@ export function ApproachDie({
       </div>
 
       {(rolling || result) && popupVisible && createPortal(
-        <div
-          ref={popupRef}
-          className="approach-die-popup"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}
-        >
+        <>
+          {(() => {
+            const dismiss = (event: React.PointerEvent) => {
+              event.preventDefault()
+              closePopup()
+            }
+            if (!boxRect) {
+              return (
+                <div
+                  className="approach-die-popup-backdrop"
+                  style={{ top: 0, left: 0, right: 0, bottom: 0 }}
+                  onPointerDown={dismiss}
+                />
+              )
+            }
+            // Four bands framing boxRect, leaving it as a hole so a
+            // re-press there still reaches the real box underneath.
+            return (
+              <>
+                <div
+                  className="approach-die-popup-backdrop"
+                  style={{ top: 0, left: 0, right: 0, height: Math.max(0, boxRect.top) }}
+                  onPointerDown={dismiss}
+                />
+                <div
+                  className="approach-die-popup-backdrop"
+                  style={{ top: boxRect.bottom, left: 0, right: 0, bottom: 0 }}
+                  onPointerDown={dismiss}
+                />
+                <div
+                  className="approach-die-popup-backdrop"
+                  style={{ top: boxRect.top, left: 0, width: Math.max(0, boxRect.left), height: boxRect.height }}
+                  onPointerDown={dismiss}
+                />
+                <div
+                  className="approach-die-popup-backdrop"
+                  style={{ top: boxRect.top, left: boxRect.right, right: 0, height: boxRect.height }}
+                  onPointerDown={dismiss}
+                />
+              </>
+            )
+          })()}
+          <div
+            ref={popupRef}
+            className="approach-die-popup"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
           <button
             type="button"
             className="approach-die-popup-close"
@@ -1524,7 +1628,8 @@ export function ApproachDie({
               </div>
             </div>
           )}
-        </div>,
+          </div>
+        </>,
         document.body
       )}
     </div>

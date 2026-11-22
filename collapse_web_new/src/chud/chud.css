@@ -1534,6 +1534,20 @@ body::after {
 
 /* Portaled to document.body (not a descendant of .aag-page2), so these rules
    are intentionally unscoped. */
+
+/* Sits behind the popup but above everything else, so a tap meant to
+   dismiss the popup lands on this (transparent) element instead of
+   whatever's underneath it (e.g. the HP card, Grit bar, Ganbare! overlay,
+   a Set Rolls row) — those widgets react on pointerup/click, not just
+   pointerdown, so merely stopping the dismiss gesture's pointerdown from
+   bubbling wasn't enough; a real element that's actually hit-tested first
+   is what's needed. */
+.approach-die-popup-backdrop {
+  position: fixed;
+  z-index: 199;
+  background: transparent;
+}
+
 .approach-die-popup {
   position: fixed;
   z-index: 200;

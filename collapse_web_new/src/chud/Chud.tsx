@@ -17,6 +17,7 @@ import {
   type DieSides,
 } from "../domain/approachDice";
 import type { ApproachDieRollResult } from "./components/ApproachDie";
+import { clearAllPersistedRolls } from "../utils/approachRollPersistence";
 import { clampApproachToCore, clampCore } from "../domain/coreApproachMap";
 import { computeWardrobeBonuses } from "../domain/wardrobeBonus";
 import { loadState, readGearData, readWardrobeData } from "../utils/chudPersistence";
@@ -428,6 +429,13 @@ export default function Chud() {
           // Ganbare! during play never touches Overload.
           resetApproachOverload(STORAGE_KEY);
           resetGanbareCharges(STORAGE_KEY);
+          // Any roll still sitting unresolved in a Method's popup no
+          // longer makes sense once Overload is reset out from under it
+          // (and an Engram it used is about to be refilled below) — drop
+          // it instead of letting it be reopened/Confirmed for a result
+          // that was already paid for twice.
+          clearAllPersistedRolls();
+          setStagedEngram(null);
         }
         if (n.effect.fullEngramRestore) fullRestEngrams(DECK_BUILDER_KEY);
         // A Narrative Death (Collapse already maxed) has no Collapse Table

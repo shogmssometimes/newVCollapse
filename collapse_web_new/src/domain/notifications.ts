@@ -216,7 +216,7 @@ export function queueHpZeroNotificationsIfNeeded(
       collapseMaxed
         ? "Collapse is maxed. This is a Narrative Death (handbook p54)."
         : "Accept to apply +1 Collapse and revive with 1 HP, or cancel to clear without it.",
-      collapseMaxed ? { narrativeDeath: true } : { collapse: 1, reviveHp1: true }
+      collapseMaxed ? { collapse: 1, narrativeDeath: true } : { collapse: 1, reviveHp1: true }
     );
   }
   if (!hasBeenDownedBefore) {

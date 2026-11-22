@@ -614,7 +614,7 @@ function buildGritCollapseMeter(getMeters, setMeters) {
               'grit-zero',
               'Grit reached 0',
               `Accept to apply +1 Collapse and recover Grit, or cancel to leave Grit at 0.`,
-              { collapse: 1, grit: rolled },
+              { collapse: 1, gritSetRaw: rolled },
               { roll: { die: 6, value: rolled } }
             )
           }

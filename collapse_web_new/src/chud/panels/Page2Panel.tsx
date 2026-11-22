@@ -45,6 +45,7 @@ export function Page2Panel({
   onDamageDieSizeReset,
   restWidget,
   collapseModifiers = DEFAULT_COLLAPSE_MODIFIERS,
+  collapseModifiersWidget,
 }: {
   onOpenMgr: () => void;
   readyness: number;
@@ -67,6 +68,9 @@ export function Page2Panel({
   /** Permanent Collapse Table ± adjustments, shown as "(±N)" badges next
    * to the stats they affect (WT, Capacity, Inventory Slots). */
   collapseModifiers?: CollapseModifiers;
+  /** Button (+ summary) that opens the standalone Collapse Modifiers page,
+   * rendered just under Full Rest (restWidget). */
+  collapseModifiersWidget?: ReactNode;
 }) {
   const [openDistribution, setOpenDistribution] = useState<keyof CoreStats | null>(null);
   const [noDiceMode, setNoDiceModeState] = useState<boolean>(() => isNoDiceMode());
@@ -310,6 +314,7 @@ export function Page2Panel({
       })()}
 
       {restWidget}
+      {collapseModifiersWidget}
     </div>
   );
 }

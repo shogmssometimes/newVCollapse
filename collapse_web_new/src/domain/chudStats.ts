@@ -95,6 +95,20 @@ export function computeMethodRating(approachValue: number, field: keyof Approach
   return Math.max(0, approachValue + (modifiers.methodDice[field] ?? 0));
 }
 
+// How many modifier fields are non-zero, counting each Method's dice entry
+// separately (used by the AAG's "Collapse Modifiers" summary button so
+// players can tell at a glance whether anything is active without opening
+// the page).
+export function countActiveCollapseModifiers(modifiers: CollapseModifiers): number {
+  const scalarFields: Array<keyof CollapseModifiers> = [
+    'maxHp', 'readiness', 'inventorySlots', 'capacity', 'ganbareCharges', 'wt',
+    'totalAttackDefense', 'totalAll',
+  ];
+  const scalarCount = scalarFields.filter((f) => (modifiers[f] as number) !== 0).length;
+  const methodCount = Object.values(modifiers.methodDice ?? {}).filter((v) => (v ?? 0) !== 0).length;
+  return scalarCount + methodCount;
+}
+
 // "HP 7 (−2)" — shows a derived stat alongside its own Collapse modifier
 // (if any) so the player can see at a glance why the number isn't the
 // plain handbook formula. Returns just the bare value when the modifier

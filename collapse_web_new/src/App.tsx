@@ -6,6 +6,7 @@ import CharMgmt, { CHAR_SWITCH_EVENT } from "./pages/CharMgmt";
 import ProfilePage from "./pages/Profile";
 import AagPage from "./pages/Aag";
 import MgrPage from "./pages/Mgr";
+import CollapsePage from "./pages/Collapse";
 import { HeaderNotificationsBell } from "./components/HeaderNotificationsBell";
 import { deckBuilderKey, gearSlotsKey, wardrobeKey, chudStateKey, notesKey, profileKey, CHAR_ACTIVE_KEY } from "./utils/slotKeys";
 import { parseHashRoute } from "./utils/routing";
@@ -18,7 +19,7 @@ function readActiveCharSlot(): number {
   return isNaN(n) || n < 1 || n > 3 ? 1 : n;
 }
 
-type Route = "hub" | "player" | "chud" | "csmatrix" | "gear" | "notes" | "char-mgmt" | "profile" | "aag" | "mgr";
+type Route = "hub" | "player" | "chud" | "csmatrix" | "gear" | "notes" | "char-mgmt" | "profile" | "aag" | "mgr" | "collapse";
 type HubCard = {
   id: Route;
   title: string;
@@ -95,6 +96,7 @@ const deriveRoute = (): Route => {
   if (segment === "profile") return "profile";
   if (segment === "aag") return "aag";
   if (segment === "mgr") return "mgr";
+  if (segment === "collapse") return "collapse";
   return "hub";
 };
 
@@ -565,6 +567,7 @@ export default function App() {
         case "profile":   return "#/profile";
         case "aag":       return "#/aag";
         case "mgr":       return "#/mgr";
+        case "collapse":  return "#/collapse";
         default:          return "#/hub";
       }
     })();
@@ -624,6 +627,7 @@ export default function App() {
           gearSlotsStorageKey={gearSlotsKey(charSlot)}
           deckBuilderStorageKey={deckStorageKey}
           onOpenMgr={() => setRoute("mgr")}
+          onOpenCollapse={() => setRoute("collapse")}
         />
       </PlayerShell>
     );
@@ -645,6 +649,26 @@ export default function App() {
         }
       >
         <MgrPage chudStateStorageKey={chudStateKey(charSlot)} charSlot={charSlot} onCloseMgr={() => setRoute("aag")} />
+      </PlayerShell>
+    );
+  }
+
+  if (route === "collapse") {
+    return (
+      <PlayerShell
+        key={route}
+        onBack={() => setRoute("aag")}
+        onGoHome={() => setRoute("hub")}
+        chudDock={chudDock}
+        hideHud
+        charSlot={charSlot}
+        actions={
+          <button className="topbar-square-btn" onClick={() => setRoute("chud")} aria-label="Close AAG">
+            <span aria-hidden="true" style={{ marginRight: 4 }}>✕</span>AAG
+          </button>
+        }
+      >
+        <CollapsePage key={`collapse-${charSlot}`} chudStateStorageKey={chudStateKey(charSlot)} />
       </PlayerShell>
     );
   }

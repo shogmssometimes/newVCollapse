@@ -760,6 +760,40 @@
   margin-top: 6px;
 }
 
+/* AAG's entry point into the standalone Collapse page — a single button
+   under Full Rest, matching the rest-stack-btn look, with a live summary
+   of what's active so players don't need to open the page to check. */
+.aag-page2 .collapse-modifiers-open-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-top: 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(248, 250, 252, 0.85);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.aag-page2 .collapse-modifiers-open-btn:active {
+  transform: scale(0.98);
+}
+
+.aag-page2 .collapse-modifiers-open-summary {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  color: rgba(248, 250, 252, 0.5);
+}
+
 .aag-page2 .collapse-mod-subhead {
   font-size: 0.68rem;
   font-family: var(--font-display);

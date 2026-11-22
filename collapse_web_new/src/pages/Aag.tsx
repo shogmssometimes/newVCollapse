@@ -7,13 +7,13 @@ import {
   computeInventorySlots,
   computeSkillCount,
   computeWtBase,
+  countActiveCollapseModifiers,
   withCollapseModifiers,
 } from "../domain/chudStats";
 import { isDieSides, stepUp, type DieSides } from "../domain/approachDice";
 import { clampApproachToCore, clampCore, STAT_AND_METHOD_MAX } from "../domain/coreApproachMap";
 import { loadState, readGearData } from "../utils/chudPersistence";
 import { Page2Panel } from "../chud/panels/Page2Panel";
-import { CollapseModifiersPanel } from "../chud/panels/CollapseModifiersPanel";
 import { RestWidget } from "../chud/components/RestWidget";
 import "./aagPage2.css";
 
@@ -26,11 +26,13 @@ export default function AagPage({
   gearSlotsStorageKey,
   deckBuilderStorageKey,
   onOpenMgr,
+  onOpenCollapse,
 }: {
   chudStateStorageKey: string;
   gearSlotsStorageKey: string;
   deckBuilderStorageKey: string;
   onOpenMgr: () => void;
+  onOpenCollapse: () => void;
 }) {
   const saved = loadState(chudStateStorageKey);
 
@@ -104,6 +106,17 @@ export default function AagPage({
   const isOverEncumbered = gearSlotsUsed > inventorySlots;
   const skillCount = computeSkillCount(core);
   const fumbleNumber = computeFumbleNumber(core);
+
+  // "3 active · 1 result" / "None" — shown on the AAG's Collapse Modifiers
+  // button so players can tell at a glance whether anything is set without
+  // opening the page.
+  const activeModifierCount = countActiveCollapseModifiers(collapseModifiers);
+  const collapseModifiersSummary = (() => {
+    const parts: string[] = [];
+    if (activeModifierCount > 0) parts.push(`${activeModifierCount} active`);
+    if (collapseResults.length > 0) parts.push(`${collapseResults.length} result${collapseResults.length === 1 ? "" : "s"}`);
+    return parts.length > 0 ? parts.join(" · ") : "None";
+  })();
 
   // Persist the fields this page owns, merging with whatever the CHUD iframe
   // has saved for the fields it owns (hpCounter, secondary, ganbareSpent,
@@ -181,12 +194,12 @@ export default function AagPage({
               collapseModifiers={collapseModifiers}
             />
           }
-        />
-        <CollapseModifiersPanel
-          modifiers={collapseModifiers}
-          onChange={setCollapseModifiersField}
-          results={collapseResults}
-          onResultsChange={setCollapseResults}
+          collapseModifiersWidget={
+            <button type="button" className="collapse-modifiers-open-btn" onClick={onOpenCollapse}>
+              <span>Collapse Modifiers</span>
+              <span className="collapse-modifiers-open-summary">{collapseModifiersSummary}</span>
+            </button>
+          }
         />
       </div>
     </div>

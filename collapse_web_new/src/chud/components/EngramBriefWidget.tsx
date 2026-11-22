@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { engramCatalogById } from "../../data/handbook/engramCatalog";
 import { addEngramCharge, spendAllEngramCharges, type EngramManagerState } from "../../utils/engramState";
 import { STANDARD_LONG_PRESS_MS } from "../../utils/gestureConstants";
@@ -53,6 +53,16 @@ export function EngramBriefWidget({
   const holdInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const isHolding = useRef(false);
   const holdFired = useRef(false);
+
+  // No Dice Mode "Engram Played" toast auto-dismisses after ~2s — unlike
+  // the staged/effect popups (which the player explicitly taps to close
+  // before continuing), it previously stayed up and could cover the new
+  // Set Rolls row that playEngram() just opened under it.
+  useEffect(() => {
+    if (popup?.kind !== "played") return;
+    const t = setTimeout(() => setPopup(null), 2000);
+    return () => clearTimeout(t);
+  }, [popup]);
 
   // Show every equipped Engram (copies > 0), regardless of current charge
   // count — a depleted Engram still needs to appear in the cycle, it just

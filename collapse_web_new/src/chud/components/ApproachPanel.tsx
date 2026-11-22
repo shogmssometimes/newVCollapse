@@ -296,6 +296,7 @@ export function ApproachPanel({
                     totalAttackDefenseModifier={collapseModifiers.totalAttackDefense}
                     noDiceMode={noDiceMode}
                     onToggleOverloadPip={onToggleOverloadPip ? (origin, wasSpent) => onToggleOverloadPip(field, origin, wasSpent) : undefined}
+                    inference={core.inference}
                   />
                 );
               })}

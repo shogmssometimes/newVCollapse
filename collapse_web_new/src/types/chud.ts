@@ -53,6 +53,16 @@ export interface CollapseResultEntry {
   text: string;
 }
 
+// A known Skill (handbook v12 p20: Skills known = Inference). Reference
+// only — the list never gates anything except adding past the Inference
+// limit; the "Use Skill" button in a Method roll popup works regardless of
+// what's listed here.
+export interface SkillEntry {
+  id: string;
+  name: string;
+  note: string;
+}
+
 export interface SaveState {
   core: CoreStats;
   hpCounter: number;
@@ -89,6 +99,9 @@ export interface SaveState {
   collapseModifiers?: Partial<CollapseModifiers>;
   /** Free-text Collapse Table results with no number to change. */
   collapseResults?: CollapseResultEntry[];
+  /** Known Skills (handbook v12 p20) — reference list capped at Inference,
+   * owned/edited by the Modifiers page. */
+  skills?: SkillEntry[];
 }
 
 export type GearSlotEntry = { name: string; units: string; qty: string };

@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import type { CSSProperties } from "react"
 import { createPortal } from "react-dom"
 import type { ApproachDieResult, ApproachRollResult, DieSides } from "../../domain/approachDice"
-import { rollFlatDice, computeFumbleWounds } from "../../domain/approachDice"
-import { addSetRollRow } from "../../utils/chudVanillaBridge"
+import { rollFlatDice, computeFumbleWounds, useSkillReroll } from "../../domain/approachDice"
+import { addSetRollRow, readGlobalMeters, spendGrit } from "../../utils/chudVanillaBridge"
 import { pushNotification } from "../../domain/notifications"
 import { STAT_AND_METHOD_MAX } from "../../domain/coreApproachMap"
 import { STANDARD_LONG_PRESS_MS } from "../../utils/gestureConstants"
@@ -44,6 +44,13 @@ const DIE_SWIPE_PX = 18
 type PopupView = "result" | "margin-input" | "margin-result" | "damage"
 
 const dieLabel = (die: DieSides) => `D${die}`
+
+// Grit Menu's Hidden/Reckless buttons (handbook v12 p40) — same effect text
+// as the HUD's Status Effects catalog (meter-bridge.js/GMCombatTracker.tsx).
+const GRIT_STATUS_EFFECT: Record<"Hidden" | "Reckless", string> = {
+  Hidden: "+1d6 to Finesse, Logic and Show rolls. Found by a Perception check that meets or beats your Set; if found, lose Hidden and become Exposed.",
+  Reckless: "+1d6 to Force, Guts and Tell rolls. Stopped by a Method roll (Roleplay Action) that meets or beats your Set; if stopped, lose Reckless and become Exposed.",
+}
 
 // Method row — printed-sheet style: the track is a fixed 1-6 numbered
 // circle row (never a glowing number). A solid marker sits on the current
@@ -103,6 +110,7 @@ export function ApproachDie({
   totalAttackDefenseModifier = 0,
   noDiceMode = false,
   onToggleOverloadPip,
+  inference = 0,
 }: {
   label: string
   /** Core-distributed rating alone (before Wardrobe) — the track's full/ghost count and the base Overload-spendable pool size. */
@@ -147,6 +155,9 @@ export function ApproachDie({
   /** No Dice Mode only: tapping a pip reports its origin and whether it
    * was spent (so the parent flips exactly 1 die the other way). */
   onToggleOverloadPip?: (origin: "base" | "wardrobe", wasSpent: boolean) => void
+  /** Inference stat (Dice Mode only) — gates the Use Skill button (shown
+   * when >= 1) and is its silent per-roll reroll cap. */
+  inference?: number
 }) {
   const wardrobeAvail = wardrobeAvailable ?? wardrobeBonus
   const [errorFlash, setErrorFlash] = useState(false)
@@ -204,6 +215,22 @@ export function ApproachDie({
   // unreliable. Confirms everything at once: any pending Overload AND
   // locks the current Engram Stack in for good.
   const [confirmHoldProgress, setConfirmHoldProgress] = useState(0)
+  // Use Skill (handbook p20, Dice Mode only): which die indices have
+  // already been rerolled-by-Skill this roll — reset on every fresh
+  // rollPool, never on reopening an unresolved result. Its size doubles as
+  // the "rerolls used" count against the silent `inference` cap.
+  const [skillUsedIndices, setSkillUsedIndices] = useState<Set<number>>(new Set())
+  // Grit Menu (handbook p40, Dice Mode only) — each spends 1 Grit via the
+  // same path as tapping the Grit bar (see spendGrit in chudVanillaBridge).
+  const [gritBonusDie, setGritBonusDie] = useState<number | null>(null) // "+1d10" — once per roll
+  const [ignoreOverloadSpend, setIgnoreOverloadSpend] = useState(false) // "Ignore Overload"
+  const [gritRerollUsed, setGritRerollUsed] = useState(false) // "Reroll" — once per roll, after a shown miss
+  const [grit, setGrit] = useState(() => readGlobalMeters().grit)
+  useEffect(() => {
+    const onStorage = () => setGrit(readGlobalMeters().grit)
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
+  }, [])
   // Swipe-commit "fling" — the picked-up die flies off in the swipe
   // direction instead of the action applying (and the chip
   // disappearing/resetting) instantly, so the gesture reads as a deliberate
@@ -249,7 +276,10 @@ export function ApproachDie({
   const resolveOverloadIfNeeded = useCallback(() => {
     if (resolvedRef.current) return
     resolvedRef.current = true
-    if (onOverload && pendingOverload.size > 0) {
+    // Grit Menu's "Ignore Overload": the die Overloaded this roll keeps its
+    // doubled value (already reflected in dieMax/displayTotal below) but
+    // isn't actually spent from its pool.
+    if (onOverload && pendingOverload.size > 0 && !ignoreOverloadSpend) {
       let baseCount = 0
       let wardrobeCount = 0
       pendingOverload.forEach((index) => {
@@ -259,7 +289,7 @@ export function ApproachDie({
       onOverload(baseCount, wardrobeCount)
     }
     setResolved(true)
-  }, [onOverload, pendingOverload, available])
+  }, [onOverload, pendingOverload, available, ignoreOverloadSpend])
 
   const closePopup = useCallback(() => {
     // Closing the popup (via the X button or tapping outside) now ONLY
@@ -339,6 +369,10 @@ export function ApproachDie({
     setEngramStack(null)
     engramRollCacheRef.current = {}
     setConfirmHoldProgress(0)
+    setSkillUsedIndices(new Set())
+    setGritBonusDie(null)
+    setIgnoreOverloadSpend(false)
+    setGritRerollUsed(false)
     setResolved(false)
     setView("result")
     setRolling(true)
@@ -492,7 +526,57 @@ export function ApproachDie({
   // alongside "Total:" below. The Attack/Defense modifier is NOT part of
   // this — it only applies once this Total is sent to Margin (see
   // startMargin), since it only means something against an opposition.
-  const displayTotal = dieMax + engramBonusTotal + totalAllModifier
+  const displayTotal = dieMax + engramBonusTotal + totalAllModifier + (gritBonusDie ?? 0)
+
+  // Use Skill (handbook p20, Dice Mode only): each tap rerolls the lowest
+  // die not yet rerolled this roll, keeping the higher of old/new, and
+  // marks it "Skill" — silently capped at `inference` rerolls per roll
+  // (the button just disables, no counter shown). Locked the same way as
+  // everything else once Confirmed/sent to Margin.
+  const canUseSkill = !noDiceMode && !resolvedRef.current && !!result && skillUsedIndices.size < inference
+  const useSkill = () => {
+    if (!canUseSkill || !result) return
+    const outcome = useSkillReroll(result.dice, skillUsedIndices)
+    if (!outcome) return
+    setResult({ ...result, dice: outcome.dice })
+    setSkillUsedIndices((prev) => new Set(prev).add(outcome.index))
+  }
+
+  // Grit Menu (handbook p40, Dice Mode only) — each button spends 1 Grit
+  // through the exact same path as tapping the Grit bar (spendGrit), so
+  // dropping to 0 here still queues the "Grit reached 0" notification.
+  const gritAddD10 = () => {
+    if (noDiceMode || resolvedRef.current || !result || gritBonusDie !== null || grit <= 0) return
+    const rolled = Math.floor(Math.random() * 10) + 1
+    if (!spendGrit(1)) return
+    setGrit((g) => Math.max(0, g - 1))
+    setGritBonusDie(rolled)
+  }
+  const gritIgnoreOverload = () => {
+    if (noDiceMode || resolvedRef.current || pendingOverload.size === 0 || ignoreOverloadSpend || grit <= 0) return
+    if (!spendGrit(1)) return
+    setGrit((g) => Math.max(0, g - 1))
+    setIgnoreOverloadSpend(true)
+  }
+  const gritReroll = () => {
+    if (noDiceMode || gritRerollUsed || grit <= 0 || margin === null || margin >= 0) return
+    if (!spendGrit(1)) return
+    setGrit((g) => Math.max(0, g - 1))
+    const rerolled = onRoll(poolMax)
+    setResult(rerolled)
+    const newDieMax = rerolled.dice.reduce((max, d) => Math.max(max, d.total), 0)
+    const newTotal = newDieMax + engramBonusTotal + totalAllModifier + (gritBonusDie ?? 0)
+    setMarginBase(newTotal)
+    const opposition = Number(oppositionInput)
+    if (Number.isFinite(opposition)) setMargin(newTotal - opposition)
+    setGritRerollUsed(true)
+  }
+  const gritAddStatus = (status: "Hidden" | "Reckless") => {
+    if (noDiceMode || grit <= 0) return
+    if (!spendGrit(1)) return
+    setGrit((g) => Math.max(0, g - 1))
+    addSetRollRow(displayTotal, { name: status, effect: GRIT_STATUS_EFFECT[status] })
+  }
   // Picking up a die previews doubling it, but only once confirmed with a
   // long-press (a plain tap would be too easy to trigger by accident while
   // reading the result) — it's then auto-resolved (spent from its own
@@ -794,6 +878,60 @@ export function ApproachDie({
     ? `Swipe to roll ${poolMax}`
     : "Hold, then swipe to roll"
 
+  // Grit Menu (handbook p40) — shown both in the result view (before Margin
+  // is started) and the margin-result view (where Reroll becomes relevant,
+  // once a miss is shown) rather than duplicating the JSX in both places.
+  const gritMenuEl = !noDiceMode && (
+    <div className="approach-die-grit-menu" aria-label="Grit Menu">
+      <span className="approach-die-grit-menu-label">Grit</span>
+      <button
+        type="button"
+        className="approach-die-grit-btn"
+        disabled={resolvedRef.current || gritBonusDie !== null || grit <= 0}
+        onClick={(event) => { event.stopPropagation(); gritAddD10() }}
+        title="Spend 1 Grit: roll 1d10 and add it to the Total (once per roll)"
+      >
+        +1d10
+      </button>
+      <button
+        type="button"
+        className="approach-die-grit-btn"
+        disabled={resolvedRef.current || pendingOverload.size === 0 || ignoreOverloadSpend || grit <= 0}
+        onClick={(event) => { event.stopPropagation(); gritIgnoreOverload() }}
+        title="Spend 1 Grit: the die Overloaded this roll doesn't count as spent"
+      >
+        Ignore Overload
+      </button>
+      <button
+        type="button"
+        className="approach-die-grit-btn"
+        disabled={gritRerollUsed || grit <= 0 || margin === null || margin >= 0}
+        onClick={(event) => { event.stopPropagation(); gritReroll() }}
+        title="Spend 1 Grit: reroll the whole pool once (must keep the new result)"
+      >
+        Reroll
+      </button>
+      <button
+        type="button"
+        className="approach-die-grit-btn"
+        disabled={grit <= 0}
+        onClick={(event) => { event.stopPropagation(); gritAddStatus("Hidden") }}
+        title="Spend 1 Grit: adds Hidden to Set Rolls — this Total is your Set value"
+      >
+        Hidden
+      </button>
+      <button
+        type="button"
+        className="approach-die-grit-btn"
+        disabled={grit <= 0}
+        onClick={(event) => { event.stopPropagation(); gritAddStatus("Reckless") }}
+        title="Spend 1 Grit: adds Reckless to Set Rolls — this Total is your Set value"
+      >
+        Reckless
+      </button>
+    </div>
+  )
+
   return (
     <div
       ref={boxRef}
@@ -960,7 +1098,7 @@ export function ApproachDie({
                     <button
                       key={index}
                       type="button"
-                      className={`approach-die-chip${pendingOverload.has(index) ? " overloaded" : ""}${isTop ? " top" : ""}${isPressing ? " pressing" : ""}${isArmed ? " armed" : ""}${fling ? ` fling-${fling}` : ""}`}
+                      className={`approach-die-chip${pendingOverload.has(index) ? " overloaded" : ""}${isTop ? " top" : ""}${isPressing ? " pressing" : ""}${isArmed ? " armed" : ""}${fling ? ` fling-${fling}` : ""}${skillUsedIndices.has(index) ? " skill-used" : ""}`}
                       style={{ ["--hold-progress-ms" as string]: `${DIE_LONG_PRESS_MS}ms` } as CSSProperties}
                       disabled={fling !== null}
                       onPointerDown={(event) => { event.stopPropagation(); handleDiePointerDown(index, event) }}
@@ -985,6 +1123,7 @@ export function ApproachDie({
                       />
                       {dieRoll.rolls[0]}
                       {pendingOverload.has(index) && <span className="approach-die-chip-doubled">DOUBLED</span>}
+                      {skillUsedIndices.has(index) && <span className="approach-die-chip-skill">SKILL</span>}
                     </button>
                   )
                 })}
@@ -1036,13 +1175,14 @@ export function ApproachDie({
                   aria-hidden="true"
                 />
                 Total: {displayTotal}{" "}
-                {(engramBonusTotal > 0 || overloadedIndex !== null || totalAllModifier !== 0) && (
+                {(engramBonusTotal > 0 || overloadedIndex !== null || totalAllModifier !== 0 || gritBonusDie !== null) && (
                   <span className="approach-die-popup-total-sub">
                     (
                     {overloadedIndex !== null && overloadedBaseValue !== null
                       ? `${overloadedBaseValue} doubled to ${overloadedBaseValue * 2}`
                       : `${dieMax} die`}
                     {engramBonusTotal > 0 ? ` + ${engramBonusTotal} Engram` : ""}
+                    {gritBonusDie !== null ? ` + ${gritBonusDie} Grit` : ""}
                     {totalAllModifier !== 0 ? ` ${totalAllModifier > 0 ? "+" : "−"} ${Math.abs(totalAllModifier)} Collapse` : ""})
                   </span>
                 )}
@@ -1050,6 +1190,18 @@ export function ApproachDie({
               <div className="approach-die-popup-swipe-hint">
                 ↑ Double · ↓ Send to Set · → Margin · Hold Total to Confirm
               </div>
+              {!noDiceMode && inference >= 1 && (
+                <button
+                  type="button"
+                  className="approach-die-use-skill-btn"
+                  disabled={!canUseSkill}
+                  onClick={(event) => { event.stopPropagation(); useSkill() }}
+                  title="Reroll the lowest die not yet rerolled this roll, keeping the higher value"
+                >
+                  Use Skill
+                </button>
+              )}
+              {gritMenuEl}
             </>
           )}
 
@@ -1101,6 +1253,7 @@ export function ApproachDie({
                   Roll Wounds ({margin}{dieLabel(damageDie)})
                 </button>
               )}
+              {gritMenuEl}
             </div>
           )}
 

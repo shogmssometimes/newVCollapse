@@ -1702,6 +1702,80 @@ body::after {
   text-align: center;
 }
 
+/* Use Skill (handbook p20) — shown under the swipe hint whenever Inference
+   >= 1; disables itself (no counter) once the silent per-roll cap is hit. */
+.approach-die-use-skill-btn {
+  display: block;
+  margin: 8px auto 0;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #bae6fd;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.approach-die-use-skill-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.approach-die-chip-skill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.25);
+  border: 1px solid #38bdf8;
+  color: #bae6fd;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  vertical-align: middle;
+}
+
+/* Grit Menu (handbook p40) — each button spends 1 Grit via the same path
+   as tapping the Grit bar; disabled states are purely state-driven (see
+   ApproachDie.tsx's gritMenuEl), no separate charge/counter UI needed. */
+.approach-die-grit-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.approach-die-grit-menu-label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #f2d06b;
+  margin-right: 2px;
+}
+
+.approach-die-grit-btn {
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #f2d06b;
+  background: rgba(242, 208, 107, 0.1);
+  border: 1px solid rgba(242, 208, 107, 0.4);
+  border-radius: 999px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.approach-die-grit-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 /* Engram roller row — standby icons for qualifying equipped Engrams
    (charges > 0), plus already-tapped Engrams' own small d4 chips, grouped
    below the Method dice. Wraps onto multiple lines rather than scrolling,

@@ -7,7 +7,8 @@
 import type { CollapseModifiers, CoreStats } from "../types/chud";
 import { computeDerived, withCollapseModifiers } from "../domain/chudStats";
 import { clampCore } from "../domain/coreApproachMap";
-import { queueHpZeroNotificationsIfNeeded } from "../domain/notifications";
+import { hasPendingNotification, pushNotification, queueHpZeroNotificationsIfNeeded } from "../domain/notifications";
+import { isNoDiceMode } from "./noDiceMode";
 import { statusRollsKey, csmatrixKey } from "./slotKeys";
 
 // Set Rolls and the CS Matrix graph (which also holds the global
@@ -157,6 +158,43 @@ export function setCollapsePath(path: string, chudStateKey: string): void {
   } catch {
     // storage unavailable — ignore
   }
+}
+
+/**
+ * Spends 1 Grit from the global meter through the exact same path as
+ * tapping the Grit bar's left side (meter-bridge.js's buildGritCollapseMeter
+ * tapDelta=-1 case) — used by the Grit Menu's spend buttons so dropping to
+ * 0 here still queues the "grit reached 0" notification (+1 Collapse),
+ * instead of silently decrementing with no side effect. Returns false
+ * (nothing spent) if Grit is already 0 or its own "grit reached 0"
+ * notification is still pending (locked out, same as the bar).
+ */
+export function spendGrit(amount = 1): boolean {
+  if (hasPendingNotification("grit-zero")) return false;
+  const { grit: prevGrit } = readGlobalMeters();
+  if (prevGrit <= 0) return false;
+  const next = Math.max(0, prevGrit - amount);
+  adjustGlobalMeters({ grit: -(prevGrit - next) });
+  if (next === 0) {
+    if (isNoDiceMode()) {
+      pushNotification(
+        "grit-zero",
+        "Grit reached 0",
+        "+1 Collapse. Reroll Grit at the table and set it on the bar.",
+        { collapse: 1 }
+      );
+    } else {
+      const rolled = 1 + Math.floor(Math.random() * 6);
+      pushNotification(
+        "grit-zero",
+        "Grit reached 0",
+        "Accept to apply +1 Collapse and recover Grit, or cancel to leave Grit at 0.",
+        { collapse: 1, grit: rolled },
+        { roll: { die: 6, value: rolled } }
+      );
+    }
+  }
+  return true;
 }
 
 /** Reads the current Grit/Collapse global meters (for computing Full Rest's

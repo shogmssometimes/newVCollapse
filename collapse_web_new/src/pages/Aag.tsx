@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ApproachStats, CollapseModifiers, CollapseResultEntry, CoreStats } from "../types/chud";
+import type { ApproachStats, CollapseModifiers, CollapseResultEntry, CoreStats, SkillEntry } from "../types/chud";
 import {
   DEFAULT_APPROACH,
   computeDerived,
@@ -26,13 +26,13 @@ export default function AagPage({
   gearSlotsStorageKey,
   deckBuilderStorageKey,
   onOpenMgr,
-  onOpenCollapse,
+  onOpenModifiers,
 }: {
   chudStateStorageKey: string;
   gearSlotsStorageKey: string;
   deckBuilderStorageKey: string;
   onOpenMgr: () => void;
-  onOpenCollapse: () => void;
+  onOpenModifiers: () => void;
 }) {
   const saved = loadState(chudStateStorageKey);
 
@@ -45,6 +45,9 @@ export default function AagPage({
     withCollapseModifiers(saved?.collapseModifiers)
   );
   const [collapseResults, setCollapseResults] = useState<CollapseResultEntry[]>(saved?.collapseResults ?? []);
+  // Read-only here (owned/edited by the Modifiers page) — only needed for
+  // the AAG's "Modifiers" button summary count.
+  const [skills, setSkills] = useState<SkillEntry[]>(saved?.skills ?? []);
   // WT is the one stat that's "base + modifier, plus temporary changes on
   // top" (handbook statuses like Exposed) rather than a pure derived value
   // — `wt` is the actual displayed/stored number (as it always has been;
@@ -107,12 +110,13 @@ export default function AagPage({
   const skillCount = computeSkillCount(core);
   const fumbleNumber = computeFumbleNumber(core);
 
-  // "3 active · 1 result" / "None" — shown on the AAG's Collapse Modifiers
-  // button so players can tell at a glance whether anything is set without
-  // opening the page.
+  // "2 Skills · 3 active · 1 result" / "None" — shown on the AAG's
+  // Modifiers button so players can tell at a glance whether anything is
+  // set without opening the page.
   const activeModifierCount = countActiveCollapseModifiers(collapseModifiers);
-  const collapseModifiersSummary = (() => {
+  const modifiersSummary = (() => {
     const parts: string[] = [];
+    if (skills.length > 0) parts.push(`${skills.length} Skill${skills.length === 1 ? "" : "s"}`);
     if (activeModifierCount > 0) parts.push(`${activeModifierCount} active`);
     if (collapseResults.length > 0) parts.push(`${collapseResults.length} result${collapseResults.length === 1 ? "" : "s"}`);
     return parts.length > 0 ? parts.join(" · ") : "None";
@@ -151,6 +155,7 @@ export default function AagPage({
           if (typeof s.wt === "number") setWtRaw(Math.max(1, s.wt));
           if (s.collapseModifiers) setCollapseModifiers(withCollapseModifiers(s.collapseModifiers));
           if (Array.isArray(s.collapseResults)) setCollapseResults(s.collapseResults);
+          if (Array.isArray(s.skills)) setSkills(s.skills);
         } catch {
           // malformed storage — ignore
         }
@@ -195,9 +200,9 @@ export default function AagPage({
             />
           }
           collapseModifiersWidget={
-            <button type="button" className="collapse-modifiers-open-btn" onClick={onOpenCollapse}>
-              <span>Collapse Modifiers</span>
-              <span className="collapse-modifiers-open-summary">{collapseModifiersSummary}</span>
+            <button type="button" className="collapse-modifiers-open-btn" onClick={onOpenModifiers}>
+              <span>Modifiers</span>
+              <span className="collapse-modifiers-open-summary">{modifiersSummary}</span>
             </button>
           }
         />

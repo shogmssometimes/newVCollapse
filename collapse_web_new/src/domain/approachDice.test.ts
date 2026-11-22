@@ -11,6 +11,7 @@ import {
   spendOverloadDie,
   stepDown,
   stepUp,
+  useSkillReroll,
 } from "./approachDice"
 
 function sequence(...values: number[]): () => number {
@@ -103,5 +104,29 @@ describe("Approach dice", () => {
   it("allows a flat roll of zero dice and rejects invalid counts", () => {
     expect(rollFlatDice(0, 8, sequence())).toEqual([])
     expect(() => rollFlatDice(-1, 8)).toThrow(/non-negative integer/)
+  })
+
+  it("Use Skill rerolls the lowest not-yet-rerolled die and keeps the higher value", () => {
+    const dice = [{ rolls: [7], total: 7 }, { rolls: [2], total: 2 }, { rolls: [5], total: 5 }]
+    // Rerolls index 1 (lowest, value 2) — rolls a 9, which beats the old 2.
+    const result = useSkillReroll(dice, new Set(), sequence(0.89))
+    expect(result).not.toBeNull()
+    expect(result!.index).toBe(1)
+    expect(result!.dice[1]).toEqual({ rolls: [9], total: 9 })
+    expect(result!.dice[0]).toEqual(dice[0]) // other dice untouched
+  })
+
+  it("Use Skill keeps the old value when the reroll is lower", () => {
+    const dice = [{ rolls: [2], total: 2 }]
+    // Rolls a 1, which is worse than the old 2 — keeps the 2.
+    const result = useSkillReroll(dice, new Set(), sequence(0))
+    expect(result!.dice[0]).toEqual({ rolls: [2], total: 2 })
+  })
+
+  it("Use Skill skips already-rerolled dice and returns null once every die has been used", () => {
+    const dice = [{ rolls: [2], total: 2 }, { rolls: [8], total: 8 }]
+    expect(useSkillReroll(dice, new Set([0, 1]), sequence())).toBeNull()
+    const result = useSkillReroll(dice, new Set([0]), sequence(0.5))
+    expect(result!.index).toBe(1) // index 0 already used, so the only reroll candidate is index 1
   })
 })

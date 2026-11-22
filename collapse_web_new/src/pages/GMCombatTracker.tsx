@@ -1640,10 +1640,12 @@ const RunCard: React.FC<RunCardProps> = ({ c, index, total, onChange, onPrev, on
             )}
             {(typeof c.fumbleNumber === "number" || (c.modifiers?.wt ?? 0) !== 0 || (c.modifiers?.totalAttackDefense ?? 0) !== 0 || (c.modifiers?.totalAll ?? 0) !== 0) && (
               <div style={{ fontSize: "0.68rem", color: "var(--muted)", marginTop: 6 }}>
-                {typeof c.fumbleNumber === "number" ? `Fumble ${c.fumbleNumber} · ` : ""}
-                {noDice ? `WT ${effWt(c)} · ` : ""}
-                {(c.modifiers?.totalAttackDefense ?? 0) !== 0 ? `Attack/Defense ${c.modifiers!.totalAttackDefense! > 0 ? "+" : "−"}${Math.abs(c.modifiers!.totalAttackDefense!)} · ` : ""}
-                {(c.modifiers?.totalAll ?? 0) !== 0 ? `Every Roll ${c.modifiers!.totalAll! > 0 ? "+" : "−"}${Math.abs(c.modifiers!.totalAll!)}` : ""}
+                {[
+                  typeof c.fumbleNumber === "number" ? `Fumble ${-Math.abs(c.fumbleNumber)}` : null,
+                  noDice ? `WT ${effWt(c)}` : null,
+                  (c.modifiers?.totalAttackDefense ?? 0) !== 0 ? `Attack/Defense ${c.modifiers!.totalAttackDefense! > 0 ? "+" : "−"}${Math.abs(c.modifiers!.totalAttackDefense!)}` : null,
+                  (c.modifiers?.totalAll ?? 0) !== 0 ? `Every Roll ${c.modifiers!.totalAll! > 0 ? "+" : "−"}${Math.abs(c.modifiers!.totalAll!)}` : null,
+                ].filter(Boolean).join(" · ")}
               </div>
             )}
           </div>

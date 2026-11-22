@@ -6,7 +6,7 @@ import CharMgmt, { CHAR_SWITCH_EVENT } from "./pages/CharMgmt";
 import ProfilePage from "./pages/Profile";
 import AagPage from "./pages/Aag";
 import MgrPage from "./pages/Mgr";
-import CollapsePage from "./pages/Collapse";
+import ModifiersPage from "./pages/Modifiers";
 import { HeaderNotificationsBell } from "./components/HeaderNotificationsBell";
 import { deckBuilderKey, gearSlotsKey, wardrobeKey, chudStateKey, notesKey, profileKey, CHAR_ACTIVE_KEY } from "./utils/slotKeys";
 import { parseHashRoute } from "./utils/routing";
@@ -19,7 +19,7 @@ function readActiveCharSlot(): number {
   return isNaN(n) || n < 1 || n > 3 ? 1 : n;
 }
 
-type Route = "hub" | "player" | "chud" | "csmatrix" | "gear" | "notes" | "char-mgmt" | "profile" | "aag" | "mgr" | "collapse";
+type Route = "hub" | "player" | "chud" | "csmatrix" | "gear" | "notes" | "char-mgmt" | "profile" | "aag" | "mgr" | "modifiers";
 type HubCard = {
   id: Route;
   title: string;
@@ -96,7 +96,9 @@ const deriveRoute = (): Route => {
   if (segment === "profile") return "profile";
   if (segment === "aag") return "aag";
   if (segment === "mgr") return "mgr";
-  if (segment === "collapse") return "collapse";
+  // "#/collapse" is the old route name — keep resolving it to the renamed
+  // Modifiers page so any existing bookmarks/links still work.
+  if (segment === "modifiers" || segment === "collapse") return "modifiers";
   return "hub";
 };
 
@@ -567,7 +569,7 @@ export default function App() {
         case "profile":   return "#/profile";
         case "aag":       return "#/aag";
         case "mgr":       return "#/mgr";
-        case "collapse":  return "#/collapse";
+        case "modifiers": return "#/modifiers";
         default:          return "#/hub";
       }
     })();
@@ -627,7 +629,7 @@ export default function App() {
           gearSlotsStorageKey={gearSlotsKey(charSlot)}
           deckBuilderStorageKey={deckStorageKey}
           onOpenMgr={() => setRoute("mgr")}
-          onOpenCollapse={() => setRoute("collapse")}
+          onOpenModifiers={() => setRoute("modifiers")}
         />
       </PlayerShell>
     );
@@ -653,7 +655,7 @@ export default function App() {
     );
   }
 
-  if (route === "collapse") {
+  if (route === "modifiers") {
     return (
       <PlayerShell
         key={route}
@@ -668,7 +670,7 @@ export default function App() {
           </button>
         }
       >
-        <CollapsePage key={`collapse-${charSlot}`} chudStateStorageKey={chudStateKey(charSlot)} />
+        <ModifiersPage key={`modifiers-${charSlot}`} chudStateStorageKey={chudStateKey(charSlot)} />
       </PlayerShell>
     );
   }

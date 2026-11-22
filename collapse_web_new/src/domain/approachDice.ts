@@ -141,3 +141,30 @@ export function rollApproachDice(
     total: dice.reduce((max, result) => Math.max(max, result.total), 0),
   }
 }
+
+/**
+ * Use Skill (handbook v12 p20): rerolls the lowest die in the pool that
+ * hasn't already been rerolled by Skill this roll, keeping the higher of
+ * its old/new value, and marks it as used. Picks the first (lowest-index)
+ * die among the current-lowest ties so results are deterministic given the
+ * same `random` source. Returns null if every die is already Skill-used
+ * (nothing left to reroll) or the pool is empty.
+ */
+export function useSkillReroll(
+  dice: ApproachDieResult[],
+  usedIndices: ReadonlySet<number>,
+  random: () => number = Math.random
+): { dice: ApproachDieResult[]; index: number } | null {
+  let targetIndex = -1
+  for (let i = 0; i < dice.length; i++) {
+    if (usedIndices.has(i)) continue
+    if (targetIndex === -1 || dice[i].total < dice[targetIndex].total) targetIndex = i
+  }
+  if (targetIndex === -1) return null
+  const oldRoll = dice[targetIndex]
+  const newValue = rollDie(METHOD_DIE, random)
+  const kept = Math.max(oldRoll.total, newValue)
+  const nextDice = dice.slice()
+  nextDice[targetIndex] = { rolls: [kept], total: kept }
+  return { dice: nextDice, index: targetIndex }
+}

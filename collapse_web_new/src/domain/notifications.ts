@@ -220,19 +220,26 @@ export function queueHpZeroNotificationsIfNeeded(
     );
   }
   if (!hasBeenDownedBefore) {
-    pushNotification(
-      "choose-path",
-      "Choose Your Path",
-      "You've gone down for the first time. This choice determines which Collapse Table you'll roll on from now on.",
-      {},
-      {
-        choices: [
-          { key: "live", label: "Live" },
-          { key: "survive", label: "Survive" },
-          { key: "die", label: "Die" },
-        ],
-      }
-    );
+    // Narrative Death has no "going forward" — there's no Collapse Table
+    // to pick for a character who isn't coming back, so skip the one-time
+    // path choice notification when this first-ever down is also a
+    // Narrative Death. "Downed before" still flips true either way, so a
+    // later (non-fatal) down never re-offers the choice retroactively.
+    if (!collapseMaxed) {
+      pushNotification(
+        "choose-path",
+        "Choose Your Path",
+        "You've gone down for the first time. This choice determines which Collapse Table you'll roll on from now on.",
+        {},
+        {
+          choices: [
+            { key: "live", label: "Live" },
+            { key: "survive", label: "Survive" },
+            { key: "die", label: "Die" },
+          ],
+        }
+      );
+    }
     return true;
   }
   return false;

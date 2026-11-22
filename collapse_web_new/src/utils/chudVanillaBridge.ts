@@ -245,6 +245,25 @@ export function resetApproachOverload(chudStateKey: string): void {
   }
 }
 
+/** Clears the staged Engram (the standby chip any Method's roll popup can
+ * pull from) for the given (slot-aware) `chud.state.v1` key — Full Rest
+ * only. Mirrors Chud.tsx's own `setStagedEngram(null)`, needed here too
+ * since Full Rest can be accepted from the header bell with no live Chud
+ * instance mounted to apply that React-state clear itself; otherwise the
+ * chip (and the charges it already spent to be staged) survives the
+ * fullEngramRestore refill it was supposed to be folded back into. */
+export function clearStagedEngram(chudStateKey: string): void {
+  try {
+    const raw = window.localStorage.getItem(chudStateKey);
+    const parsed: Record<string, unknown> = raw ? JSON.parse(raw) : {};
+    const json = JSON.stringify({ ...parsed, stagedEngram: null });
+    window.localStorage.setItem(chudStateKey, json);
+    notify(chudStateKey, json);
+  } catch {
+    // storage unavailable — ignore
+  }
+}
+
 /** Restores all Ganbare! Charges (spent count back to 0) for the given
  * (slot-aware) `chud.state.v1` key — Full Rest only. */
 export function resetGanbareCharges(chudStateKey: string): void {

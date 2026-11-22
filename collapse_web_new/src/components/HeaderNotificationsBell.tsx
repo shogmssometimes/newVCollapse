@@ -20,11 +20,13 @@ import {
   setCollapsePath,
   resetApproachOverload,
   resetGanbareCharges,
+  clearStagedEngram,
   setVanillaBridgeSlot,
 } from "../utils/chudVanillaBridge";
 import { computeDerived, DEFAULT_COLLAPSE_MODIFIERS } from "../domain/chudStats";
 import { chudStateKey, deckBuilderKey } from "../utils/slotKeys";
 import { fullRestEngrams } from "../utils/engramState";
+import { clearAllPersistedRolls } from "../utils/approachRollPersistence";
 
 /**
  * Outer-app header bell for the shared notifications queue (HP hitting 0,
@@ -99,6 +101,15 @@ export function HeaderNotificationsBell({ charSlot }: { charSlot: number }) {
           // from this bell on the AAG or any other page, not just the HUD.
           resetApproachOverload(chudStateKey(charSlot));
           resetGanbareCharges(chudStateKey(charSlot));
+          // Same as Chud.tsx: a roll still sitting unresolved in a
+          // Method's popup, or an Engram staged-but-not-yet-consumed, no
+          // longer makes sense once Overload resets and Engrams refill out
+          // from under them — without this, accepting Full Rest from the
+          // bell left a stale staged chip (and its already-spent charges)
+          // and let a pre-rest roll reopen with bonuses that were already
+          // paid for twice.
+          clearAllPersistedRolls(charSlot);
+          clearStagedEngram(chudStateKey(charSlot));
         }
         if (n.effect.fullEngramRestore) fullRestEngrams(deckBuilderKey(charSlot));
         if (n.kind === "hp-zero" && !n.effect.narrativeDeath) {

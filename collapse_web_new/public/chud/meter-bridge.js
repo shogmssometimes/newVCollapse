@@ -22,12 +22,18 @@ const STATUS_ROLL_MAX_ROWS = 10
 // No Dice Mode (per-device, not per-slot — src/utils/noDiceMode.ts is the
 // TS mirror of this same key/flag): when on, the app never rolls — it's
 // just the character sheet. Read fresh each time rather than cached, since
-// it can be flipped from Profile.tsx in another tab at any moment.
+// it can be flipped from Profile.tsx in another tab at any moment. Default
+// is ON: a key that's never been set (every fresh tester) means No Dice
+// Mode, not Dice Mode — only an explicit "0" turns it off. Must match
+// noDiceMode.ts's default exactly, or a fresh device shows the No Dice
+// Mode HUD while this file's widgets (Grit/Collapse bar, Set Rolls) still
+// behave as Dice Mode underneath.
 const NO_DICE_MODE_KEY = 'collapse.noDiceMode'
 function isNoDiceMode() {
   try {
-    return localStorage.getItem(NO_DICE_MODE_KEY) === '1'
-  } catch { return false }
+    const raw = localStorage.getItem(NO_DICE_MODE_KEY)
+    return raw === null || raw === '1'
+  } catch { return true }
 }
 const STATUS_ROLL_DEFAULT_ROWS = 2
 // Handbook's Status Effects table (Phase "Environmental Effects In

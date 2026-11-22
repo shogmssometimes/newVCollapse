@@ -57,4 +57,11 @@ describe("queueHpZeroNotificationsIfNeeded", () => {
     expect(n!.detail).toMatch(/Narrative Death/i);
     expect(n!.detail).not.toMatch(/1 HP/i);
   });
+
+  it("skips choose-path on a first-ever down that's also a Narrative Death, but still flips hasBeenDownedBefore", () => {
+    const shouldFlip = queueHpZeroNotificationsIfNeeded(1, 0, false, true);
+    expect(shouldFlip).toBe(true);
+    expect(hasPendingNotification("hp-zero")).toBe(true);
+    expect(hasPendingNotification("choose-path")).toBe(false);
+  });
 });

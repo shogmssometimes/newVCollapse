@@ -456,28 +456,18 @@ export function ApproachDie({
   // The result popup stays open until the player dismisses it (tap outside
   // or the close button) — it never times out on its own. The popup is
   // rendered via createPortal into document.body, physically outside
-  // boxRef's own subtree, so "outside" must explicitly also check
-  // popupRef — relying solely on the popup's own stopPropagation calls
-  // bubbling correctly across the portal boundary was fragile and could
-  // let a tap on a die/button inside the popup be misread as "outside"
-  // and close it before the player's intended action landed.
-  useEffect(() => {
-    if (!popupVisible) return
-    const handleOutside = (event: PointerEvent) => {
-      if (!(event.target instanceof Node)) return
-      if (boxRef.current?.contains(event.target)) return
-      if (popupRef.current?.contains(event.target)) return
-      // Captured ahead of whatever's actually under the tap (e.g. the HUD's
-      // HP card, which has its own tap-decrements-HP gesture) — closing
-      // the popup must swallow this same pointerdown, or dismissing it
-      // doubles as the first tap of that element's own gesture underneath.
-      event.preventDefault()
-      event.stopPropagation()
-      closePopup()
-    }
-    document.addEventListener("pointerdown", handleOutside, true)
-    return () => document.removeEventListener("pointerdown", handleOutside, true)
-  }, [popupVisible, closePopup])
+  // boxRef's own subtree. Dismissing an outside tap used to be handled by
+  // a document-level capture-phase "pointerdown" listener here, but that
+  // raced with the backdrop below: it closed (and unmounted the backdrop)
+  // on pointerDOWN, so the matching pointerup/click of the very same tap
+  // then landed on whatever's actually underneath (HP card, Grit bar,
+  // Ganbare!, etc.) with nothing left to swallow it. The full-screen
+  // backdrop rendered alongside the popup below is now the only outside-
+  // tap mechanism — it physically covers everything outside the popup/box
+  // via normal hit-testing, swallows all three of pointerdown/pointerup/
+  // click on itself, and only actually dismisses on click (the gesture's
+  // last event, once it's clear this wasn't the start of a drag toward
+  // something else) instead of on the first pointerdown.
 
   // Keeps boxRect current while the popup (and its backdrop) is up, so the
   // hole tracks the box through layout shifts, scrolling, and resizes.
@@ -1174,6 +1164,11 @@ export function ApproachDie({
   const gritMenuEl = !noDiceMode && (
     <div className="approach-die-grit-menu" aria-label="Grit Menu">
       <span className="approach-die-grit-menu-label">Grit</span>
+      {gritZeroPending && (
+        <span className="approach-die-grit-menu-hint" role="status">
+          {gritZeroHint}
+        </span>
+      )}
       <button
         type="button"
         className="approach-die-grit-btn"
@@ -1344,16 +1339,33 @@ export function ApproachDie({
       {(rolling || result) && popupVisible && createPortal(
         <>
           {(() => {
-            const dismiss = (event: React.PointerEvent) => {
+            // Swallow pointerdown/pointerup entirely (preventDefault +
+            // stopPropagation) so neither ever reaches whatever's really
+            // underneath — only the trailing "click" (synthesized from a
+            // down+up pair that didn't drag away) actually dismisses, so
+            // the backdrop itself is what the whole tap gesture lands on
+            // from start to finish, not a mix of "backdrop gets the down,
+            // real element gets the up."
+            const swallow = (event: React.SyntheticEvent) => {
               event.preventDefault()
+              event.stopPropagation()
+            }
+            const dismiss = (event: React.SyntheticEvent) => {
+              event.preventDefault()
+              event.stopPropagation()
               closePopup()
+            }
+            const backdropProps = {
+              onPointerDown: swallow,
+              onPointerUp: swallow,
+              onClick: dismiss,
             }
             if (!boxRect) {
               return (
                 <div
                   className="approach-die-popup-backdrop"
                   style={{ top: 0, left: 0, right: 0, bottom: 0 }}
-                  onPointerDown={dismiss}
+                  {...backdropProps}
                 />
               )
             }
@@ -1364,22 +1376,22 @@ export function ApproachDie({
                 <div
                   className="approach-die-popup-backdrop"
                   style={{ top: 0, left: 0, right: 0, height: Math.max(0, boxRect.top) }}
-                  onPointerDown={dismiss}
+                  {...backdropProps}
                 />
                 <div
                   className="approach-die-popup-backdrop"
                   style={{ top: boxRect.bottom, left: 0, right: 0, bottom: 0 }}
-                  onPointerDown={dismiss}
+                  {...backdropProps}
                 />
                 <div
                   className="approach-die-popup-backdrop"
                   style={{ top: boxRect.top, left: 0, width: Math.max(0, boxRect.left), height: boxRect.height }}
-                  onPointerDown={dismiss}
+                  {...backdropProps}
                 />
                 <div
                   className="approach-die-popup-backdrop"
                   style={{ top: boxRect.top, left: boxRect.right, right: 0, height: boxRect.height }}
-                  onPointerDown={dismiss}
+                  {...backdropProps}
                 />
               </>
             )

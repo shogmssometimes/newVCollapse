@@ -1538,10 +1538,11 @@ body::after {
 /* Sits behind the popup but above everything else, so a tap meant to
    dismiss the popup lands on this (transparent) element instead of
    whatever's underneath it (e.g. the HP card, Grit bar, Ganbare! overlay,
-   a Set Rolls row) — those widgets react on pointerup/click, not just
-   pointerdown, so merely stopping the dismiss gesture's pointerdown from
-   bubbling wasn't enough; a real element that's actually hit-tested first
-   is what's needed. */
+   a Set Rolls row). It swallows pointerdown/pointerup AND only dismisses
+   on click — the whole gesture stays on this element from press to
+   release that way, instead of pointerdown dismissing (and un-rendering
+   the backdrop) while the pointerup/click of the same tap falls through
+   to whatever's really underneath. */
 .approach-die-popup-backdrop {
   position: fixed;
   z-index: 199;
@@ -1771,6 +1772,20 @@ body::after {
   text-transform: uppercase;
   color: #f2d06b;
   margin-right: 2px;
+}
+
+/* Visible (not hover-tooltip-only) stand-in for the buttons' disabled
+   `title` text — a `title` attribute never shows on a touch device with no
+   hover state, so a pending Grit-0 notification otherwise disabled the
+   whole Grit Menu with no visible explanation at all. Forced onto its own
+   line (flex-basis: 100%) ahead of the buttons, which sit in the same wrap
+   container. */
+.approach-die-grit-menu-hint {
+  flex-basis: 100%;
+  text-align: center;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #f2a65b;
 }
 
 .approach-die-grit-btn {

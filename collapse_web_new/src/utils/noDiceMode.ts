@@ -6,14 +6,22 @@
 // the GM app (its own hub reads/writes the exact same key) — there is no
 // cross-device sync, it's just the same localStorage key read by whatever
 // browser it's opened in.
+//
+// Defaults to ON for a device that's never touched this key at all (a
+// fresh browser/profile) — table play is the common case. Once the
+// Profile/GM toggle is used even once, that explicit "0"/"1" is what's
+// read from then on, so turning it off persists exactly like turning it
+// on does.
 export const NO_DICE_MODE_KEY = "collapse.noDiceMode";
 
 export function isNoDiceMode(): boolean {
-  if (typeof window === "undefined") return false;
+  if (typeof window === "undefined") return true;
   try {
-    return window.localStorage.getItem(NO_DICE_MODE_KEY) === "1";
+    const raw = window.localStorage.getItem(NO_DICE_MODE_KEY);
+    if (raw === null) return true;
+    return raw === "1";
   } catch {
-    return false;
+    return true;
   }
 }
 

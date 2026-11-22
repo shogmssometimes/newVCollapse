@@ -1,9 +1,19 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
+import { rollApproachDice, rollFlatDice, computeFumbleWounds, DIE_LADDER, type DieSides } from "../domain/approachDice";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = "collapse.gm.tracker.v2";
 const MAX_SCENARIOS = 8;
+
+// Method dice: the same 6 Methods the player app rolls (handbook p48's
+// Margin generator reuses this same set for Combatant Entities).
+type MethodKey = "force" | "finesse" | "guts" | "logic" | "show" | "tell";
+const METHOD_KEYS: MethodKey[] = ["force", "finesse", "guts", "logic", "show", "tell"];
+const METHOD_LABELS: Record<MethodKey, string> = {
+  force: "Force", finesse: "Finesse", guts: "Guts", logic: "Logic", show: "Show", tell: "Tell",
+};
+const WOUND_DIE_OPTIONS: DieSides[] = DIE_LADDER.filter((d) => d !== 4) as DieSides[];
 
 const INPUT: React.CSSProperties = {
   background: "rgba(255,255,255,0.04)",
@@ -39,6 +49,24 @@ function defaultSetRoll(): SetRollState {
   return { open: false, rows: [newSetRollRow(), newSetRollRow()] };
 }
 
+// Per-Combatant Collapse-style modifiers (handbook v12 §D8): a ± overlay on
+// top of each base stat, never baked back into the base value. Every stat a
+// GM sees is base + modifier, computed on demand by the eff*() helpers below
+// — that keeps Start Fight (which re-applies these every fight) from ever
+// double-counting a modifier into the stored base.
+type CeModifiers = {
+  readiness: number;
+  maxHp: number;
+  wt: number;
+  methodDice: Partial<Record<MethodKey, number>>;
+  totalAttackDefense: number;
+  totalAll: number;
+};
+
+function defaultCeModifiers(): CeModifiers {
+  return { readiness: 0, maxHp: 0, wt: 0, methodDice: {}, totalAttackDefense: 0, totalAll: 0 };
+}
+
 type Combatant = {
   id: string;
   name: string;
@@ -51,7 +79,31 @@ type Combatant = {
   notes: NoteEntry[];
   partyId?: string; // set when imported from a Party slot
   setRoll: SetRollState;
+  wt: number; // base Wound Threshold (enemies default 3)
+  woundDieSize: DieSides; // Wound die size for the Margin generator (default d6)
+  fumbleNumber?: number; // optional Fumble Number for the Margin generator
+  methodDice: Partial<Record<MethodKey, number>>; // base dice rating per Method (enemies)
+  modifiers: CeModifiers;
+  personality?: number; // optional Readiness tie-break
+  overEncumbered?: boolean; // players: forces them last at Start Fight
+  readinessResult?: number; // Start Fight's rolled (enemy) or GM-typed (player) Readiness result
+  spentMethods: Partial<Record<MethodKey, boolean>>; // No Dice Mode (GM): tapped-spent pips, reset at Start Fight
 };
+
+// Modifiers are always applied on top of the stored base, never written back
+// into it — see the CeModifiers comment above.
+function effMaxHp(c: Combatant): number {
+  return Math.max(1, c.maxHp + (c.modifiers?.maxHp ?? 0));
+}
+function effWt(c: Combatant): number {
+  return Math.max(1, (c.wt ?? 3) + (c.modifiers?.wt ?? 0));
+}
+function effReadiness(c: Combatant): number {
+  return (c.rdy ?? 0) + (c.modifiers?.readiness ?? 0);
+}
+function effMethodDice(c: Combatant, key: MethodKey): number {
+  return Math.max(0, (c.methodDice?.[key] ?? 0) + (c.modifiers?.methodDice?.[key] ?? 0));
+}
 
 type Scenario = {
   id: string;
@@ -148,6 +200,11 @@ function makeCombatant(existing: Combatant[], type: CombatantType = "enemy"): Co
     rdy: 0,
     notes: [],
     setRoll: defaultSetRoll(),
+    wt: 3,
+    woundDieSize: 6,
+    methodDice: {},
+    modifiers: defaultCeModifiers(),
+    spentMethods: {},
   };
 }
 
@@ -169,12 +226,48 @@ function loadApp(): AppState {
       }
       return defaultSetRoll();
     };
+    const migrateModifiers = (m: any): CeModifiers => {
+      const base = defaultCeModifiers();
+      if (!m || typeof m !== "object") return base;
+      const methodDice: Partial<Record<MethodKey, number>> = {};
+      if (m.methodDice && typeof m.methodDice === "object") {
+        for (const k of METHOD_KEYS) {
+          if (typeof m.methodDice[k] === "number") methodDice[k] = m.methodDice[k];
+        }
+      }
+      return {
+        readiness: typeof m.readiness === "number" ? m.readiness : 0,
+        maxHp: typeof m.maxHp === "number" ? m.maxHp : 0,
+        wt: typeof m.wt === "number" ? m.wt : 0,
+        methodDice,
+        totalAttackDefense: typeof m.totalAttackDefense === "number" ? m.totalAttackDefense : 0,
+        totalAll: typeof m.totalAll === "number" ? m.totalAll : 0,
+      };
+    };
+    const migrateMethodDice = (md: any): Partial<Record<MethodKey, number>> => {
+      const out: Partial<Record<MethodKey, number>> = {};
+      if (md && typeof md === "object") {
+        for (const k of METHOD_KEYS) {
+          if (typeof md[k] === "number") out[k] = md[k];
+        }
+      }
+      return out;
+    };
     const migrateCombatant = (c: any, index: number) => ({
       ...c,
       icon: migrateIcon(c.icon) ?? ICONS[index % ICONS.length],
       rdy: typeof c.rdy === "number" ? c.rdy : 0,
       notes: migrateNotes(c.notes),
       setRoll: migrateSetRoll(c.setRoll),
+      wt: typeof c.wt === "number" ? c.wt : 3,
+      woundDieSize: DIE_LADDER.includes(c.woundDieSize) ? c.woundDieSize : 6,
+      fumbleNumber: typeof c.fumbleNumber === "number" ? c.fumbleNumber : undefined,
+      methodDice: migrateMethodDice(c.methodDice),
+      modifiers: migrateModifiers(c.modifiers),
+      personality: typeof c.personality === "number" ? c.personality : undefined,
+      overEncumbered: typeof c.overEncumbered === "boolean" ? c.overEncumbered : false,
+      readinessResult: typeof c.readinessResult === "number" ? c.readinessResult : undefined,
+      spentMethods: c.spentMethods && typeof c.spentMethods === "object" ? c.spentMethods : {},
     });
     return {
       combatants: Array.isArray(p.combatants)
@@ -212,23 +305,24 @@ function saveApp(s: AppState) {
 
 const RUN_STATE_KEY = "collapse.gm.tracker.runstate.v1";
 
-function loadRunState(): { mode: "edit" | "run"; runIndex: number } {
+function loadRunState(): { mode: "edit" | "run"; runIndex: number; round: number } {
   try {
     const raw = localStorage.getItem(RUN_STATE_KEY);
-    if (!raw) return { mode: "edit", runIndex: 0 };
+    if (!raw) return { mode: "edit", runIndex: 0, round: 1 };
     const p = JSON.parse(raw);
     return {
       mode: p.mode === "run" ? "run" : "edit",
       runIndex: typeof p.runIndex === "number" && p.runIndex >= 0 ? p.runIndex : 0,
+      round: typeof p.round === "number" && p.round >= 1 ? p.round : 1,
     };
   } catch {
-    return { mode: "edit", runIndex: 0 };
+    return { mode: "edit", runIndex: 0, round: 1 };
   }
 }
 
-function saveRunState(mode: "edit" | "run", runIndex: number) {
+function saveRunState(mode: "edit" | "run", runIndex: number, round: number) {
   try {
-    localStorage.setItem(RUN_STATE_KEY, JSON.stringify({ mode, runIndex }));
+    localStorage.setItem(RUN_STATE_KEY, JSON.stringify({ mode, runIndex, round }));
   } catch {}
 }
 
@@ -385,6 +479,127 @@ const Counter: React.FC<CounterProps> = ({
   );
 };
 
+// ── Modifier Stepper ──────────────────────────────────────────────────────────
+// A signed ± field with no numeric-keypad minus key needed (iPhone's numeric
+// pad has none, and almost every modifier ends up negative) — mirrors the
+// player app's CollapseModifiersPanel stepper.
+
+const ModStepper: React.FC<{ label: string; value: number; onChange: (v: number) => void }> = ({ label, value, onChange }) => {
+  const safe = Number.isFinite(value) ? value : 0;
+  return (
+    <div>
+      <div style={{ fontSize: "0.68rem", color: "var(--muted)", marginBottom: 3 }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <button
+          type="button"
+          aria-label={`Decrease ${label}`}
+          onClick={() => onChange(safe - 1)}
+          style={{ width: 28, height: 28, minWidth: 28, flexShrink: 0, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "#fff", fontSize: "0.95rem", fontWeight: 700, cursor: "pointer" }}
+        >−</button>
+        <input
+          type="number"
+          inputMode="numeric"
+          value={safe}
+          onChange={(e) => { const n = Math.round(Number(e.target.value)); onChange(Number.isFinite(n) ? n : 0); }}
+          style={{ width: 40, textAlign: "center", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, color: "#f8f9fa", fontSize: "16px", padding: "0.2rem 0" }}
+        />
+        <button
+          type="button"
+          aria-label={`Increase ${label}`}
+          onClick={() => onChange(safe + 1)}
+          style={{ width: 28, height: 28, minWidth: 28, flexShrink: 0, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "#fff", fontSize: "0.95rem", fontWeight: 700, cursor: "pointer" }}
+        >+</button>
+      </div>
+    </div>
+  );
+};
+
+// ── Enemy Modifiers Panel ─────────────────────────────────────────────────────
+// Per-Combatant Collapse-style ± overlay (handbook v12 §D8): default 0,
+// floors applied only where each eff*() helper reads it back (Max HP/WT
+// never below 1, everything else never below 0).
+
+const CeModifiersPanel: React.FC<{ value: CeModifiers; onChange: (next: CeModifiers) => void }> = ({ value, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const set = <K extends keyof CeModifiers>(key: K, v: CeModifiers[K]) => onChange({ ...value, [key]: v });
+  const setMethod = (key: MethodKey, v: number) => onChange({ ...value, methodDice: { ...value.methodDice, [key]: v } });
+
+  return (
+    <div style={{ marginTop: "0.6rem" }}>
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", borderBottom: "1px solid rgba(255,255,255,0.12)", padding: "6px 0 8px", cursor: "pointer", color: "rgba(248,250,252,0.65)", fontSize: "0.72rem", fontWeight: 500, letterSpacing: "0.14em", textTransform: "uppercase" }}
+      >
+        <span>Modifiers</span>
+        <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div style={{ paddingTop: 10 }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.6rem" }}>
+            <ModStepper label="Readiness" value={value.readiness} onChange={(v) => set("readiness", v)} />
+            <ModStepper label="Max HP" value={value.maxHp} onChange={(v) => set("maxHp", v)} />
+            <ModStepper label="WT" value={value.wt} onChange={(v) => set("wt", v)} />
+          </div>
+          <div style={{ fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--muted)", margin: "0.7rem 0 0.35rem" }}>Method Dice</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.6rem" }}>
+            {METHOD_KEYS.map((k) => (
+              <ModStepper key={k} label={METHOD_LABELS[k]} value={value.methodDice[k] ?? 0} onChange={(v) => setMethod(k, v)} />
+            ))}
+          </div>
+          <div style={{ fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--muted)", margin: "0.7rem 0 0.35rem" }}>Totals</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0.6rem" }}>
+            <ModStepper label="Attack/Defense" value={value.totalAttackDefense} onChange={(v) => set("totalAttackDefense", v)} />
+            <ModStepper label="Every Roll" value={value.totalAll} onChange={(v) => set("totalAll", v)} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── WT Control ────────────────────────────────────────────────────────────────
+// Wound Threshold: tap the value to type it, −/+ beside it, floored at 1
+// (unlike Counter's HP floor of 0).
+
+const WtControl: React.FC<{ base: number; modifier: number; onBaseChange: (v: number) => void }> = ({ base, modifier, onBaseChange }) => {
+  const [editing, setEditing] = useState(false);
+  const effective = Math.max(1, base + modifier);
+  const setEffective = (next: number) => onBaseChange(Math.max(1, next) - modifier);
+
+  return (
+    <div>
+      <div style={{ fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.13em", color: "var(--muted)", marginBottom: 3 }}>WT</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 5, marginBottom: 5 }}>
+        {editing ? (
+          <input
+            autoFocus
+            type="number"
+            defaultValue={effective}
+            style={{ width: 44, fontSize: "1.25rem", fontWeight: 700, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.22)", borderRadius: 4, color: "#f8f9fa", padding: "0.05rem 0.25rem" }}
+            onBlur={(e) => { setEffective(Math.round(Number(e.target.value)) || 1); setEditing(false); }}
+            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          />
+        ) : (
+          <span onClick={(e) => { e.stopPropagation(); setEditing(true); }} style={{ fontSize: "1.25rem", fontWeight: 700, color: "#e9c46a", cursor: "text", lineHeight: 1 }}>
+            {effective}
+          </span>
+        )}
+        {modifier !== 0 && <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.72rem" }}>({modifier > 0 ? "+" : "−"}{Math.abs(modifier)})</span>}
+      </div>
+      <div style={{ display: "flex", gap: 4 }}>
+        <button
+          onClick={(e) => { e.stopPropagation(); setEffective(effective - 1); }}
+          style={{ flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, color: "var(--error)", fontSize: "0.88rem", padding: "0.22rem 0", cursor: "pointer" }}
+        >−</button>
+        <button
+          onClick={(e) => { e.stopPropagation(); setEffective(effective + 1); }}
+          style={{ flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, color: "#e9c46a", fontSize: "0.88rem", padding: "0.22rem 0", cursor: "pointer" }}
+        >+</button>
+      </div>
+    </div>
+  );
+};
+
 // ── Notes Table ───────────────────────────────────────────────────────────────
 
 type NotesTableProps = {
@@ -533,6 +748,7 @@ const SetRollRowView: React.FC<{
 }> = ({ row, onUpdate, onRemove }) => {
   const [nameFocused, setNameFocused] = useState(false);
   const [holdPct, setHoldPct] = useState(0);
+  const [editingRoll, setEditingRoll] = useState(false);
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -611,7 +827,22 @@ const SetRollRowView: React.FC<{
           onClick={() => onUpdate({ ...row, roll: clampStatusRoll(row.roll - 1) })}
           style={{ width: 32, height: 32, minWidth: 32, minHeight: 32, flexShrink: 0, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.07)", color: "#fff", fontSize: "0.95rem", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
         >−</button>
-        <span style={{ minWidth: 20, textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 800, color: "#6ac7ff", fontSize: "0.72rem" }}>{row.roll}</span>
+        {editingRoll ? (
+          <input
+            autoFocus
+            type="number"
+            inputMode="numeric"
+            defaultValue={row.roll}
+            style={{ width: 34, textAlign: "center", fontSize: "0.78rem", fontWeight: 800, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 4, color: "#6ac7ff", padding: "2px 2px" }}
+            onBlur={(e) => { onUpdate({ ...row, roll: clampStatusRoll(Number(e.target.value)) }); setEditingRoll(false); }}
+            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          />
+        ) : (
+          <span
+            onClick={(e) => { e.stopPropagation(); setEditingRoll(true); }}
+            style={{ minWidth: 20, textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 800, color: "#6ac7ff", fontSize: "0.72rem", cursor: "text" }}
+          >{row.roll}</span>
+        )}
         <button
           onClick={() => onUpdate({ ...row, roll: clampStatusRoll(row.roll + 1) })}
           style={{ width: 32, height: 32, minWidth: 32, minHeight: 32, flexShrink: 0, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.07)", color: "#fff", fontSize: "0.95rem", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
@@ -839,29 +1070,128 @@ const EditRow: React.FC<EditRowProps> = ({ c, index, isLast, onChange, onRemove,
           style={{ ...INPUT, maxWidth: 120 }}
         />
         <div style={{ color: "var(--muted)", fontSize: "0.75rem", marginTop: 6 }}>
-          When Run starts, combatants are ordered highest RDY to lowest.
+          Start Fight rolls 1d10 + RDY for enemies; players' Readiness result is typed in directly.
         </div>
       </div>
 
-      {c.type === "enemy" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-          <div>
-            <span style={{ display: "block", fontSize: "0.82rem", color: "var(--muted)", marginBottom: 5 }}>HP Max</span>
-            <input
-              type="number"
-              min={1}
-              value={c.maxHp}
-              onChange={(e) => {
-                const nextMax = Math.max(1, Number(e.target.value));
-                onChange({ ...c, maxHp: nextMax, hp: nextMax });
-              }}
-              style={INPUT}
-            />
-            <div style={{ color: "var(--muted)", fontSize: "0.75rem", marginTop: 6 }}>
-              HP starts at max in Run mode.
-            </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+        <div>
+          <span style={{ display: "block", fontSize: "0.82rem", color: "var(--muted)", marginBottom: 5 }}>Personality (optional)</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="-?[0-9]*"
+            value={c.personality ?? ""}
+            placeholder="—"
+            onChange={(e) => {
+              const raw = e.target.value;
+              if (raw.trim() === "") { onChange({ ...c, personality: undefined }); return; }
+              const n = Number(raw);
+              if (!Number.isNaN(n)) onChange({ ...c, personality: n });
+            }}
+            style={INPUT}
+          />
+          <div style={{ color: "var(--muted)", fontSize: "0.75rem", marginTop: 6 }}>
+            Breaks Readiness ties at Start Fight.
           </div>
         </div>
+        {c.type === "player" && (
+          <div>
+            <span style={{ display: "block", fontSize: "0.82rem", color: "var(--muted)", marginBottom: 5 }}>Over-Encumbered</span>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: "0.85rem", color: c.overEncumbered ? "var(--error)" : "var(--muted)" }}>
+              <input
+                type="checkbox"
+                checked={!!c.overEncumbered}
+                onChange={(e) => onChange({ ...c, overEncumbered: e.target.checked })}
+                style={{ width: 20, height: 20, cursor: "pointer" }}
+              />
+              Goes last at Start Fight
+            </label>
+          </div>
+        )}
+      </div>
+
+      {c.type === "enemy" ? (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+            <div>
+              <span style={{ display: "block", fontSize: "0.82rem", color: "var(--muted)", marginBottom: 5 }}>HP Max</span>
+              <input
+                type="number"
+                min={1}
+                value={c.maxHp}
+                onChange={(e) => {
+                  const nextMax = Math.max(1, Number(e.target.value));
+                  onChange({ ...c, maxHp: nextMax, hp: nextMax });
+                }}
+                style={INPUT}
+              />
+              <div style={{ color: "var(--muted)", fontSize: "0.75rem", marginTop: 6 }}>
+                HP starts at max when Start Fight runs.
+              </div>
+            </div>
+            <div>
+              <span style={{ display: "block", fontSize: "0.82rem", color: "var(--muted)", marginBottom: 5 }}>Wound Threshold</span>
+              <input
+                type="number"
+                min={1}
+                value={c.wt}
+                onChange={(e) => onChange({ ...c, wt: Math.max(1, Math.round(Number(e.target.value)) || 1) })}
+                style={INPUT}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+            <div>
+              <span style={{ display: "block", fontSize: "0.82rem", color: "var(--muted)", marginBottom: 5 }}>Wound Die</span>
+              <select
+                value={c.woundDieSize}
+                onChange={(e) => onChange({ ...c, woundDieSize: Number(e.target.value) as DieSides })}
+                style={{ ...INPUT, fontSize: "16px" }}
+              >
+                {WOUND_DIE_OPTIONS.map((d) => <option key={d} value={d}>d{d}</option>)}
+              </select>
+            </div>
+            <div>
+              <span style={{ display: "block", fontSize: "0.82rem", color: "var(--muted)", marginBottom: 5 }}>Fumble Number (optional)</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="-?[0-9]*"
+                value={c.fumbleNumber ?? ""}
+                placeholder="—"
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw.trim() === "") { onChange({ ...c, fumbleNumber: undefined }); return; }
+                  const n = Number(raw);
+                  if (!Number.isNaN(n)) onChange({ ...c, fumbleNumber: n });
+                }}
+                style={INPUT}
+              />
+            </div>
+          </div>
+
+          <div>
+            <span style={{ display: "block", fontSize: "0.82rem", color: "var(--muted)", marginBottom: 5 }}>Method Dice</span>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.6rem" }}>
+              {METHOD_KEYS.map((k) => (
+                <div key={k}>
+                  <span style={{ display: "block", fontSize: "0.68rem", color: "var(--muted)", marginBottom: 3 }}>{METHOD_LABELS[k]}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={c.methodDice[k] ?? 0}
+                    onChange={(e) => onChange({ ...c, methodDice: { ...c.methodDice, [k]: Math.max(0, Math.round(Number(e.target.value)) || 0) } })}
+                    style={INPUT}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <CeModifiersPanel value={c.modifiers ?? defaultCeModifiers()} onChange={(modifiers) => onChange({ ...c, modifiers })} />
+        </>
       ) : (
         <div style={{ color: "var(--muted)", fontSize: "0.88rem", padding: "0.85rem 0.5rem", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, marginBottom: "0.6rem" }}>
           Player placeholders do not track HP.
@@ -871,6 +1201,178 @@ const EditRow: React.FC<EditRowProps> = ({ c, index, isLast, onChange, onRemove,
       <NotesTable notes={c.notes} onChange={(notes) => onChange({ ...c, notes })} />
 
       <SetRollPanel value={c.setRoll ?? defaultSetRoll()} onChange={(setRoll) => onChange({ ...c, setRoll })} />
+    </div>
+  );
+};
+
+// ── CE Margin Generator ───────────────────────────────────────────────────────
+// Reuses the same dice math the player roller uses (rollApproachDice /
+// rollFlatDice / computeFumbleWounds from domain/approachDice) behind a
+// GM-local popup, since the player's ApproachDie component is too tightly
+// coupled to the player app's own HUD/Engram/Overload-pool state to drop in
+// here unmodified for an arbitrary enemy's data.
+
+const ROLL_CHIP: React.CSSProperties = {
+  width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
+  borderRadius: 8, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.05)",
+  fontWeight: 700, fontSize: "0.95rem",
+};
+
+const ROLL_BTN: React.CSSProperties = {
+  background: "rgba(99,160,255,0.12)", border: "1px solid rgba(99,160,255,0.3)", borderRadius: 8,
+  color: "var(--accent)", padding: "0.6rem 1rem", fontSize: "0.9rem", fontWeight: 600, cursor: "pointer",
+};
+
+const CeRollPopup: React.FC<{ combatant: Combatant; methodKey: MethodKey; onClose: () => void }> = ({ combatant, methodKey, onClose }) => {
+  const rating = effMethodDice(combatant, methodKey);
+  const [dice] = useState<number[]>(() => rollApproachDice(rating).dice.map((d) => d.total));
+  const [overloaded, setOverloaded] = useState(false);
+  const [flanking, setFlanking] = useState(false);
+  const [view, setView] = useState<"roll" | "margin-input" | "margin-result" | "damage">("roll");
+  const [oppositionInput, setOppositionInput] = useState("");
+  const [margin, setMargin] = useState<number | null>(null);
+  const [damageDice, setDamageDice] = useState<number[]>([]);
+  const [extraWoundDice, setExtraWoundDice] = useState(0);
+  const [woundValue, setWoundValue] = useState(String(effWt(combatant)));
+
+  const baseDie = dice.length > 0 ? Math.max(...dice) : 0;
+  const baseDieIndex = dice.indexOf(baseDie);
+  const dieValue = overloaded ? baseDie * 2 : baseDie;
+  const totalAllMod = combatant.modifiers?.totalAll ?? 0;
+  const flankBonus = flanking ? 1 : 0;
+  const displayTotal = dieValue + totalAllMod + flankBonus;
+  const totalAttackDefenseMod = combatant.modifiers?.totalAttackDefense ?? 0;
+  const marginBase = displayTotal + totalAttackDefenseMod;
+
+  const handleConfirmMargin = () => {
+    const opposition = Number(oppositionInput);
+    if (!Number.isFinite(opposition)) return;
+    setMargin(marginBase - opposition);
+    setView("margin-result");
+  };
+
+  const handleRollDamage = () => {
+    if (margin === null || margin <= 0) return;
+    setDamageDice(rollFlatDice(margin + extraWoundDice, combatant.woundDieSize));
+    setView("damage");
+  };
+
+  const fumbleWounds = margin !== null && margin < 0 && typeof combatant.fumbleNumber === "number"
+    ? computeFumbleWounds(margin, combatant.fumbleNumber)
+    : 0;
+
+  const woundThresholdNumber = Number(woundValue);
+  const hasWoundValue = woundValue.trim() !== "" && Number.isFinite(woundThresholdNumber);
+  const isSuccess = (v: number) => hasWoundValue && v >= woundThresholdNumber;
+  const successCount = hasWoundValue ? damageDice.filter(isSuccess).length : 0;
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", WebkitUserSelect: "none" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        style={{ background: "var(--bg-dark)", border: "1px solid var(--border)", borderRadius: 14, padding: "1.25rem", width: "92%", maxWidth: 360, display: "flex", flexDirection: "column", gap: "0.9rem" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontWeight: 700, fontSize: "1rem" }}>{combatant.name} — {METHOD_LABELS[methodKey]}</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--muted)", fontSize: "1.2rem", cursor: "pointer" }}>✕</button>
+        </div>
+
+        {view === "roll" && (
+          <>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {dice.length === 0 ? (
+                <span style={{ color: "var(--muted)", fontSize: "0.85rem" }}>No dice to roll.</span>
+              ) : dice.map((v, i) => (
+                <span key={i} style={{ ...ROLL_CHIP, background: i === baseDieIndex ? "rgba(255,210,99,0.18)" : ROLL_CHIP.background, borderColor: i === baseDieIndex ? "rgba(255,210,99,0.5)" : (ROLL_CHIP.border as string) }}>
+                  {v}
+                </span>
+              ))}
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem", cursor: baseDie > 0 ? "pointer" : "default", opacity: baseDie > 0 ? 1 : 0.4 }}>
+              <input type="checkbox" checked={overloaded} disabled={baseDie <= 0} onChange={(e) => setOverloaded(e.target.checked)} style={{ width: 20, height: 20 }} />
+              Overload (double highest die)
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem", cursor: "pointer" }}>
+              <input type="checkbox" checked={flanking} onChange={(e) => setFlanking(e.target.checked)} style={{ width: 20, height: 20 }} />
+              Flanking +1
+            </label>
+            <div style={{ fontSize: "1.3rem", fontWeight: 800, textAlign: "center" }}>
+              Total: {displayTotal}
+              {(totalAllMod !== 0 || flankBonus !== 0 || overloaded) && (
+                <div style={{ fontSize: "0.72rem", color: "var(--muted)", fontWeight: 400 }}>
+                  ({overloaded ? `${baseDie} doubled to ${dieValue}` : `${dieValue} die`}
+                  {flankBonus ? " + 1 Flanking" : ""}
+                  {totalAllMod !== 0 ? ` ${totalAllMod > 0 ? "+" : "−"} ${Math.abs(totalAllMod)} Collapse` : ""})
+                </div>
+              )}
+            </div>
+            <button onClick={() => setView("margin-input")} style={ROLL_BTN}>Enter Player's Total</button>
+          </>
+        )}
+
+        {view === "margin-input" && (
+          <>
+            {totalAttackDefenseMod !== 0 && (
+              <div style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
+                Attacker Total: {marginBase} ({displayTotal} {totalAttackDefenseMod > 0 ? "+" : "−"} {Math.abs(totalAttackDefenseMod)} Collapse)
+              </div>
+            )}
+            <label style={{ fontSize: "0.8rem", color: "var(--muted)" }}>Player's Total</label>
+            <input
+              autoFocus type="number" inputMode="numeric" value={oppositionInput}
+              onChange={(e) => setOppositionInput(e.target.value)}
+              style={{ ...INPUT, fontSize: "16px", textAlign: "center" }}
+            />
+            <button disabled={oppositionInput.trim() === ""} onClick={handleConfirmMargin} style={{ ...ROLL_BTN, opacity: oppositionInput.trim() === "" ? 0.5 : 1 }}>
+              Calculate Margin
+            </button>
+          </>
+        )}
+
+        {view === "margin-result" && margin !== null && (
+          <>
+            <div style={{ textAlign: "center", fontSize: "2rem", fontWeight: 800, color: margin > 0 ? "var(--accent-influence)" : "var(--error)" }}>
+              {margin > 0 ? `+${margin} HIT` : `${margin} MISS`}
+            </div>
+            {margin > 0 && (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
+                  <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>Extra Wound dice</span>
+                  <button onClick={() => setExtraWoundDice((n) => Math.max(0, n - 1))} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "#fff", cursor: "pointer" }}>−</button>
+                  <span>{extraWoundDice}</span>
+                  <button onClick={() => setExtraWoundDice((n) => n + 1)} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "#fff", cursor: "pointer" }}>+</button>
+                </div>
+                <button onClick={handleRollDamage} style={ROLL_BTN}>
+                  Roll Wounds ({margin + extraWoundDice}d{combatant.woundDieSize})
+                </button>
+              </>
+            )}
+            {margin < 0 && fumbleWounds > 0 && (
+              <div style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, padding: "0.6rem", fontSize: "0.82rem", color: "#f87171" }}>
+                Fumble! Missed past its Fumble Number ({combatant.fumbleNumber}) — {fumbleWounds} Wound{fumbleWounds === 1 ? "" : "s"} to {combatant.name}.
+              </div>
+            )}
+          </>
+        )}
+
+        {view === "damage" && (
+          <>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
+              {damageDice.map((v, i) => (
+                <span key={i} style={{ ...ROLL_CHIP, background: isSuccess(v) ? "rgba(99,255,177,0.18)" : ROLL_CHIP.background }}>{v}</span>
+              ))}
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: "0.8rem", color: "var(--muted)", marginBottom: 4 }}>Wound Threshold</label>
+              <input type="number" inputMode="numeric" value={woundValue} onChange={(e) => setWoundValue(e.target.value)} style={{ ...INPUT, fontSize: "16px" }} />
+            </div>
+            {hasWoundValue && <div style={{ textAlign: "center", fontSize: "0.9rem", fontWeight: 700 }}>{successCount} Wound{successCount === 1 ? "" : "s"}</div>}
+          </>
+        )}
+      </div>
     </div>
   );
 };
@@ -887,9 +1389,12 @@ type RunCardProps = {
   onPrev: () => void;
   onNext: () => void;
   onGoTo: (i: number) => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
 };
 
-const RunCard: React.FC<RunCardProps> = ({ c, index, total, onChange, onPrev, onNext, onGoTo }) => {
+const RunCard: React.FC<RunCardProps> = ({ c, index, total, onChange, onPrev, onNext, onGoTo, onMoveUp, onMoveDown }) => {
+  const [rollMethod, setRollMethod] = useState<MethodKey | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const onPrevRef = useRef(onPrev);
   const onNextRef = useRef(onNext);
@@ -926,6 +1431,8 @@ const RunCard: React.FC<RunCardProps> = ({ c, index, total, onChange, onPrev, on
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const downed = c.type === "enemy" && c.hp <= 0;
+
   return (
     <div
       ref={cardRef}
@@ -936,45 +1443,118 @@ const RunCard: React.FC<RunCardProps> = ({ c, index, total, onChange, onPrev, on
         <div>
           <div style={{ fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.13em", color: "var(--muted)" }}>
             {index + 1} / {total}
+            {typeof c.readinessResult === "number" && <span> · RDY roll {c.readinessResult}</span>}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {c.avatarUrl ? (
               <img
                 src={c.avatarUrl}
                 alt=""
-                style={{ width: 56, height: 56, borderRadius: "50%", objectFit: "cover", flexShrink: 0, border: "2px solid rgba(255,255,255,0.15)" }}
+                style={{ width: 56, height: 56, borderRadius: "50%", objectFit: "cover", flexShrink: 0, border: "2px solid rgba(255,255,255,0.15)", opacity: downed ? 0.4 : 1 }}
               />
             ) : (
-              <span style={{ fontSize: "2rem" }}>{c.icon || ICONS[index % ICONS.length]}</span>
+              <span style={{ fontSize: "2rem", opacity: downed ? 0.4 : 1 }}>{c.icon || ICONS[index % ICONS.length]}</span>
             )}
-            <div style={{ fontWeight: 700, fontSize: "1.5rem", marginTop: 3, lineHeight: 1.1 }}>{c.name}</div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: "1.5rem", marginTop: 3, lineHeight: 1.1, opacity: downed ? 0.5 : 1 }}>{c.name}</div>
+              {downed && (
+                <div style={{ display: "inline-block", marginTop: 4, background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 6, color: "#f87171", fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", padding: "0.15rem 0.5rem" }}>
+                  Downed
+                </div>
+              )}
+            </div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          <button
-            onClick={onPrev} disabled={index === 0}
-            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: index === 0 ? "rgba(255,255,255,0.18)" : "#f8f9fa", padding: "0.4rem 0.85rem", fontSize: "1.1rem", cursor: index === 0 ? "default" : "pointer" }}
-          >←</button>
-          <button
-            onClick={onNext} disabled={total <= 1}
-            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: total <= 1 ? "rgba(255,255,255,0.18)" : "#f8f9fa", padding: "0.4rem 0.85rem", fontSize: "1.1rem", cursor: total <= 1 ? "default" : "pointer" }}
-          >→</button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={onPrev} disabled={index === 0}
+              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: index === 0 ? "rgba(255,255,255,0.18)" : "#f8f9fa", padding: "0.4rem 0.85rem", fontSize: "1.1rem", cursor: index === 0 ? "default" : "pointer" }}
+            >←</button>
+            <button
+              onClick={onNext} disabled={total <= 1}
+              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: total <= 1 ? "rgba(255,255,255,0.18)" : "#f8f9fa", padding: "0.4rem 0.85rem", fontSize: "1.1rem", cursor: total <= 1 ? "default" : "pointer" }}
+            >→</button>
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={onMoveUp} disabled={index === 0}
+              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: index === 0 ? "rgba(255,255,255,0.18)" : "#f8f9fa", padding: "0.25rem 0.6rem", fontSize: "0.85rem", cursor: index === 0 ? "default" : "pointer" }}
+            >↑</button>
+            <button
+              onClick={onMoveDown} disabled={index === total - 1}
+              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: index === total - 1 ? "rgba(255,255,255,0.18)" : "#f8f9fa", padding: "0.25rem 0.6rem", fontSize: "0.85rem", cursor: index === total - 1 ? "default" : "pointer" }}
+            >↓</button>
+          </div>
         </div>
       </div>
 
+      {downed && (
+        <div style={{ fontSize: "0.75rem", color: "#f87171", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 8, padding: "0.5rem 0.65rem" }}>
+          Struck while Downed: auto-hit.
+        </div>
+      )}
+
       {/* Counters */}
       {c.type === "enemy" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "1.75rem" }}>
-          <Counter
-            label="HP" value={c.hp} max={c.maxHp} accent="var(--accent-influence)"
-            onChange={(v) => onChange({ ...c, hp: v })}
-            onMaxChange={(v) => onChange({ ...c, maxHp: v, hp: Math.min(c.hp, v) })}
-            large
-          />
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "1.75rem", alignItems: "start" }}>
+            <Counter
+              label="HP" value={c.hp} max={effMaxHp(c)} accent="var(--accent-influence)"
+              onChange={(v) => onChange({ ...c, hp: v })}
+              onMaxChange={(v) => onChange({ ...c, maxHp: Math.max(1, v - (c.modifiers?.maxHp ?? 0)), hp: Math.min(c.hp, v) })}
+              large
+            />
+            <WtControl
+              base={c.wt}
+              modifier={c.modifiers?.wt ?? 0}
+              onBaseChange={(wt) => onChange({ ...c, wt })}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.13em", color: "var(--muted)", marginBottom: 6 }}>Methods — tap to roll</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+              {METHOD_KEYS.map((k) => {
+                const n = effMethodDice(c, k);
+                return (
+                  <button
+                    key={k}
+                    disabled={n <= 0}
+                    onClick={() => setRollMethod(k)}
+                    style={{ background: "rgba(99,160,255,0.08)", border: "1px solid rgba(99,160,255,0.22)", borderRadius: 8, color: n > 0 ? "var(--accent)" : "rgba(255,255,255,0.25)", padding: "0.5rem 0.3rem", fontSize: "0.78rem", cursor: n > 0 ? "pointer" : "default" }}
+                  >
+                    {METHOD_LABELS[k]}<br />
+                    <span style={{ fontSize: "0.68rem", opacity: 0.8 }}>{n}d10</span>
+                  </button>
+                );
+              })}
+            </div>
+            {(typeof c.fumbleNumber === "number" || (c.modifiers?.totalAttackDefense ?? 0) !== 0 || (c.modifiers?.totalAll ?? 0) !== 0) && (
+              <div style={{ fontSize: "0.68rem", color: "var(--muted)", marginTop: 6 }}>
+                {typeof c.fumbleNumber === "number" ? `Fumble ${c.fumbleNumber} · ` : ""}
+                {(c.modifiers?.totalAttackDefense ?? 0) !== 0 ? `Attack/Defense ${c.modifiers!.totalAttackDefense! > 0 ? "+" : "−"}${Math.abs(c.modifiers!.totalAttackDefense!)} · ` : ""}
+                {(c.modifiers?.totalAll ?? 0) !== 0 ? `Every Roll ${c.modifiers!.totalAll! > 0 ? "+" : "−"}${Math.abs(c.modifiers!.totalAll!)}` : ""}
+              </div>
+            )}
+          </div>
         </div>
       ) : (
-        <div style={{ color: "var(--muted)", fontSize: "0.92rem", padding: "1rem", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10 }}>
+        <div style={{ color: "var(--muted)", fontSize: "0.92rem", padding: "1rem", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, display: "flex", flexDirection: "column", gap: 10 }}>
           Player placeholder — no HP values are tracked here.
+          <div>
+            <label style={{ display: "block", fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>Readiness result</label>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={c.readinessResult ?? ""}
+              placeholder="Table roll"
+              onChange={(e) => {
+                const raw = e.target.value;
+                onChange({ ...c, readinessResult: raw.trim() === "" ? undefined : Number(raw) });
+              }}
+              style={{ ...INPUT, fontSize: "16px", maxWidth: 140 }}
+            />
+          </div>
         </div>
       )}
 
@@ -996,6 +1576,10 @@ const RunCard: React.FC<RunCardProps> = ({ c, index, total, onChange, onPrev, on
             />
           ))}
         </div>
+      )}
+
+      {rollMethod && (
+        <CeRollPopup combatant={c} methodKey={rollMethod} onClose={() => setRollMethod(null)} />
       )}
     </div>
   );
@@ -1330,6 +1914,7 @@ export default function GMCombatTracker() {
   const [appState, setAppState] = useState<AppState>(loadApp);
   const [mode, setMode] = useState<"edit" | "run">(() => loadRunState().mode);
   const [runIndex, setRunIndex] = useState(() => loadRunState().runIndex);
+  const [round, setRound] = useState(() => loadRunState().round);
   const [showScenarios, setShowScenarios] = useState(false);
   const [showParties, setShowParties] = useState(false);
   const [partySelected, setPartySelected] = useState<Set<string>>(new Set());
@@ -1351,8 +1936,8 @@ export default function GMCombatTracker() {
   // Persist Run mode / active index so combat stays running across navigation
   // until the GM explicitly ends it (Edit / Clear).
   useEffect(() => {
-    saveRunState(mode, runIndex);
-  }, [mode, runIndex]);
+    saveRunState(mode, runIndex, round);
+  }, [mode, runIndex, round]);
 
   // ── Pool actions ──────────────────────────────────────────────────────────
 
@@ -1400,7 +1985,42 @@ export default function GMCombatTracker() {
     if (!window.confirm("Clear all combatants from the pool?")) return;
     updateApp({ ...appState, combatants: [] });
     setRunIndex(0);
+    setRound(1);
     setMode("edit");
+  };
+
+  // Resets HP/order/turn — only ever runs when the GM explicitly starts a
+  // fight, never on a plain Edit↔Run toggle (that used to reset every time,
+  // which lost mid-fight HP/order whenever the GM dipped into Edit).
+  const startFight = () => {
+    setAppState((prev) => {
+      const rolled = prev.combatants.map((c) => {
+        if (c.type === "enemy") {
+          const roll = rollFlatDice(1, 10)[0] + effReadiness(c);
+          return { ...c, readinessResult: roll, hp: effMaxHp(c), spentMethods: {} };
+        }
+        return { ...c, spentMethods: {} };
+      });
+      const sorted = [...rolled].sort((a, b) => {
+        const aLast = a.type === "player" && !!a.overEncumbered;
+        const bLast = b.type === "player" && !!b.overEncumbered;
+        if (aLast !== bLast) return aLast ? 1 : -1;
+        const aR = a.readinessResult ?? -Infinity;
+        const bR = b.readinessResult ?? -Infinity;
+        if (aR !== bR) return bR - aR;
+        const aP = a.personality ?? -Infinity;
+        const bP = b.personality ?? -Infinity;
+        if (aP !== bP) return bP - aP;
+        if (a.type !== b.type) return a.type === "player" ? -1 : 1;
+        return 0; // stable sort: ties fall back to current GM order
+      });
+      const next = { ...prev, combatants: sorted };
+      saveApp(next);
+      return next;
+    });
+    setRunIndex(0);
+    setRound(1);
+    setMode("run");
   };
 
   // ── Scenario actions ──────────────────────────────────────────────────────
@@ -1512,32 +2132,32 @@ export default function GMCombatTracker() {
             Scenarios{scenarios.length > 0 ? ` (${scenarios.length})` : ""}
           </button>
           {combatants.length > 0 && (
-            <button
-              onClick={() => setMode((m) => {
-                if (m === "edit") {
-                  setAppState((prev) => {
-                    const sorted = [...prev.combatants].sort((a, b) => (b.rdy ?? 0) - (a.rdy ?? 0));
-                    const next = {
-                      ...prev,
-                      combatants: sorted.map((c) =>
-                        c.type === "enemy" ? { ...c, hp: c.maxHp } : c
-                      ),
-                    };
-                    saveApp(next);
-                    return next;
-                  });
-                  setRunIndex(0);
-                  return "run";
-                }
-                return "edit";
-              })}
-              style={{ background: mode === "run" ? "rgba(99,255,177,0.1)" : "rgba(255,255,255,0.05)", border: `1px solid ${mode === "run" ? "rgba(99,255,177,0.35)" : "rgba(255,255,255,0.1)"}`, borderRadius: 6, color: mode === "run" ? "var(--accent-influence)" : "#f8f9fa", padding: "0.4rem 0.75rem", fontSize: "0.82rem", cursor: "pointer" }}
-            >
-              {mode === "edit" ? "▶ Run" : "✎ Edit"}
-            </button>
+            <>
+              {mode === "edit" && (
+                <button
+                  onClick={startFight}
+                  title="Rolls enemy Readiness, sorts the order, and resets HP — only ever run this when a fight is actually starting"
+                  style={{ background: "rgba(255,210,99,0.12)", border: "1px solid rgba(255,210,99,0.35)", borderRadius: 6, color: "#e9c46a", padding: "0.4rem 0.75rem", fontSize: "0.82rem", cursor: "pointer" }}
+                >
+                  Start Fight
+                </button>
+              )}
+              <button
+                onClick={() => setMode((m) => (m === "edit" ? "run" : "edit"))}
+                style={{ background: mode === "run" ? "rgba(99,255,177,0.1)" : "rgba(255,255,255,0.05)", border: `1px solid ${mode === "run" ? "rgba(99,255,177,0.35)" : "rgba(255,255,255,0.1)"}`, borderRadius: 6, color: mode === "run" ? "var(--accent-influence)" : "#f8f9fa", padding: "0.4rem 0.75rem", fontSize: "0.82rem", cursor: "pointer" }}
+              >
+                {mode === "edit" ? "▶ Run" : "✎ Edit"}
+              </button>
+            </>
           )}
         </div>
       </div>
+
+      {mode === "run" && combatants.length > 0 && (
+        <div style={{ textAlign: "center", color: "var(--muted)", fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: "0.75rem" }}>
+          Round {round}
+        </div>
+      )}
 
       {/* Edit mode */}
       {mode === "edit" && (
@@ -1588,8 +2208,14 @@ export default function GMCombatTracker() {
           total={combatants.length}
           onChange={updateCombatant}
           onPrev={() => setRunIndex((i) => Math.max(0, i - 1))}
-          onNext={() => setRunIndex((i) => (i + 1) % combatants.length)}
+          onNext={() => setRunIndex((i) => {
+            const next = i + 1;
+            if (next >= combatants.length) { setRound((r) => r + 1); return 0; }
+            return next;
+          })}
           onGoTo={setRunIndex}
+          onMoveUp={() => { moveCombatant(combatants[safeIndex].id, "up"); setRunIndex((i) => Math.max(0, i - 1)); }}
+          onMoveDown={() => { moveCombatant(combatants[safeIndex].id, "down"); setRunIndex((i) => Math.min(combatants.length - 1, i + 1)); }}
         />
       )}
 

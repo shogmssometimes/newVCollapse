@@ -47,7 +47,7 @@ const GMShell: React.FC<{
         <DiceIcon size={18} />
       </button>
       <div className="topbar-title">
-        <strong>{subtitle ?? "GM Tools"}</strong>
+        {subtitle !== "" && <strong>{subtitle ?? "GM Tools"}</strong>}
       </div>
     </header>
     {children}
@@ -265,7 +265,7 @@ export default function GMApp() {
 
   if (route === "combat") {
     return (
-      <GMShell onBack={() => setRoute("hub")} subtitle="Combat Tracker">
+      <GMShell onBack={() => setRoute("hub")} subtitle="">
         <GMCombatTracker />
       </GMShell>
     );

@@ -5,20 +5,9 @@ import { STANDARD_LONG_PRESS_MS } from "../../utils/gestureConstants";
 import { lockScroll, unlockScroll } from "../../utils/scrollLock";
 import { addSetRollRow } from "../../utils/chudVanillaBridge";
 
-// Mirrors MOVE_CANCEL_PX below exactly — no dead zone in between. The old
-// 18px swipe threshold (itself already lowered from a 30px original) left
-// a gap between "moved enough to cancel the long-press hold" (10px) and
-// "moved enough to count as a swipe" (18px), where a release did nothing
-// at all; that gap read as Engram Q being less responsive than Gear Q's
-// equivalent widget (which has no deliberate-swipe-distance requirement:
-// any release that isn't a long-press and stayed within 30px just cycles).
-// Once a release has moved past the point where the hold timer already
-// gave up on it being a stationary tap, it's a swipe — there's nothing
-// else it could be.
-const SWIPE_THRESHOLD_PX = 10;
-// Movement past this, before a swipe/tap is decided, cancels an in-flight
-// long-press hold — otherwise a deliberate swipe-to-cycle gesture could
-// accidentally also fire the long-press activation partway through.
+// Movement past this, before a long-press is decided, cancels an in-flight
+// hold timer — a scroll/drag that happens to start on this widget
+// shouldn't also fire a tap-to-charge once the finger lifts.
 const MOVE_CANCEL_PX = 10;
 
 type ActivatePopup =
@@ -26,18 +15,19 @@ type ActivatePopup =
   | { kind: "effect"; name: string; text: string }
   | { kind: "played"; name: string; text: string };
 
-// Swipeable Engram queue widget — mirrors GearBriefWidget's layout. Gestures:
-// swipe left/right cycles through every *equipped* Engram (copies > 0,
-// regardless of current charge); a tap charges/preps one more stack (+1,
-// wrapping back to 0 once at max copies — charges never refund for free,
-// only Full Rest or an explicit refund does that); a long-press spends
-// every currently-charged stack at once. For an Engram that rolls into a
-// Method (handbook catalog's rollsIntoMethod), this only STAGES it — the
-// charge count is handed to the globally-shared `onStageForRoller` slot,
-// and the actual dice are rolled later when a Method roll popup activates
-// that staged chip (see ApproachDie's engramStack). For an Engram that
-// doesn't roll into a Method (heals, etc. — never enters a roller), the
-// long-press resolves immediately and shows its effect text.
+// Engram queue widget — mirrors GearBriefWidget's layout. Gestures: the
+// dedicated tap-to-cycle zone on the right advances through every
+// *equipped* Engram (copies > 0, regardless of current charge); a tap
+// anywhere on the main body charges/preps one more stack (+1, wrapping
+// back to 0 once at max copies — charges never refund for free, only Full
+// Rest or an explicit refund does that); a long-press on the main body
+// spends every currently-charged stack at once. For an Engram that rolls
+// into a Method (handbook catalog's rollsIntoMethod), this only STAGES it
+// — the charge count is handed to the globally-shared `onStageForRoller`
+// slot, and the actual dice are rolled later when a Method roll popup
+// activates that staged chip (see ApproachDie's engramStack). For an
+// Engram that doesn't roll into a Method (heals, etc. — never enters a
+// roller), the long-press resolves immediately and shows its effect text.
 export function EngramBriefWidget({
   state,
   storageKey,
@@ -84,7 +74,6 @@ export function EngramBriefWidget({
 
   const safeIdx = activeCount > 0 ? idx % activeCount : 0;
 
-  const prev = () => setIdx(i => (activeCount > 0 ? (i - 1 + activeCount) % activeCount : 0));
   const next = () => setIdx(i => (activeCount > 0 ? (i + 1) % activeCount : 0));
 
   const entry = activeCount > 0 ? (activeEntries[safeIdx] ?? null) : null;
@@ -224,74 +213,72 @@ export function EngramBriefWidget({
         background: 'rgba(8,13,23,0.92)',
         border: `1px solid ${borderColor}`,
         borderRadius: 8,
-        padding: '8px 10px',
         display: 'flex',
-        flexDirection: 'column',
-        gap: 4,
+        flexDirection: 'row',
         minWidth: 0,
-        userSelect: 'none',
-        WebkitUserSelect: 'none',
-        touchAction: 'none',
-        cursor: entry ? 'pointer' : 'default',
         boxShadow,
         transition: holdProgress > 0 ? 'none' : 'background 0.3s, border-color 0.4s, box-shadow 0.4s',
       }}
-      onPointerDown={e => {
-        touchStart.current = { x: e.clientX, y: e.clientY };
-        e.currentTarget.setPointerCapture(e.pointerId);
-        // Lock page scroll for this gesture — an underlying scroll
-        // fighting the same finger movement makes the swipe-to-cycle and
-        // long-press-to-activate gestures here harder to land.
-        lockScroll();
-        // Long-press activates in both modes: Dice Mode stages the roll,
-        // No Dice Mode plays immediately (same effect as the Play button).
-        startHold();
-      }}
-      onPointerMove={e => {
-        if (!touchStart.current || !isHolding.current) return;
-        const dx = e.clientX - touchStart.current.x;
-        const dy = e.clientY - touchStart.current.y;
-        if (Math.abs(dx) > MOVE_CANCEL_PX || Math.abs(dy) > MOVE_CANCEL_PX) {
-          cancelHold();
-        }
-      }}
-      onPointerUp={e => {
-        const start = touchStart.current;
-        // Defensive guard: if a child element (e.g. the No Dice Mode Play
-        // button) stopped propagation on pointerdown but this pointerup
-        // still bubbles up, touchStart.current never got set for this
-        // gesture — bail instead of falling through to the tap-charges branch.
-        if (start === null) return;
-        const dx = e.clientX - start.x;
-        const fired = holdFired.current;
-        cancelHold();
-        holdFired.current = false;
-        if (touchStart.current) unlockScroll();
-        touchStart.current = null;
-        if (fired) return;
-        if (Math.abs(dx) > SWIPE_THRESHOLD_PX) {
-          // Swipe left reveals the next Engram (drag finger left), swipe
-          // right goes back to the previous one — same direction mapping
-          // as a photo-gallery carousel.
-          if (dx < 0) next(); else prev();
-          return;
-        }
-        // A tap charges/preps one more stack, wrapping back to 0 once at
-        // max copies — a tap never spends anything, that's long-press's job.
-        // Reaching here means |dx| <= SWIPE_THRESHOLD_PX (checked above),
-        // which is itself equal to MOVE_CANCEL_PX, so every release that
-        // isn't a swipe is already a near-stationary tap — no separate
-        // movement check needed.
-        if (entry) {
-          addEngramCharge(storageKey, entry.id);
-          setFlashIn(true);
-          setTimeout(() => setFlashIn(false), 300);
-        }
-      }}
-      onPointerLeave={() => { cancelHold(); if (touchStart.current) unlockScroll(); touchStart.current = null; }}
-      onPointerCancel={() => { cancelHold(); if (touchStart.current) unlockScroll(); touchStart.current = null; }}
-      onContextMenu={e => e.preventDefault()}
     >
+      <div
+        style={{
+          flex: 1,
+          padding: '8px 10px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 4,
+          minWidth: 0,
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          touchAction: 'none',
+          cursor: entry ? 'pointer' : 'default',
+        }}
+        onPointerDown={e => {
+          touchStart.current = { x: e.clientX, y: e.clientY };
+          e.currentTarget.setPointerCapture(e.pointerId);
+          // Lock page scroll for this gesture — an underlying scroll
+          // fighting the same finger movement makes the long-press-to-
+          // activate gesture here harder to land.
+          lockScroll();
+          // Long-press activates in both modes: Dice Mode stages the roll,
+          // No Dice Mode plays immediately (same effect as the Play button).
+          startHold();
+        }}
+        onPointerMove={e => {
+          if (!touchStart.current || !isHolding.current) return;
+          const dx = e.clientX - touchStart.current.x;
+          const dy = e.clientY - touchStart.current.y;
+          if (Math.abs(dx) > MOVE_CANCEL_PX || Math.abs(dy) > MOVE_CANCEL_PX) {
+            cancelHold();
+          }
+        }}
+        onPointerUp={e => {
+          const start = touchStart.current;
+          // Defensive guard: if a child element (e.g. the No Dice Mode Play
+          // button) stopped propagation on pointerdown but this pointerup
+          // still bubbles up, touchStart.current never got set for this
+          // gesture — bail instead of falling through to the tap-charges branch.
+          if (start === null) return;
+          const fired = holdFired.current;
+          cancelHold();
+          holdFired.current = false;
+          if (touchStart.current) unlockScroll();
+          touchStart.current = null;
+          if (fired) return;
+          // Cycling now lives entirely in the dedicated zone on the right —
+          // every release here that wasn't a long-press is a tap, and a tap
+          // always charges/preps one more stack, wrapping back to 0 once at
+          // max copies (a tap never spends anything, that's long-press's job).
+          if (entry) {
+            addEngramCharge(storageKey, entry.id);
+            setFlashIn(true);
+            setTimeout(() => setFlashIn(false), 300);
+          }
+        }}
+        onPointerLeave={() => { cancelHold(); if (touchStart.current) unlockScroll(); touchStart.current = null; }}
+        onPointerCancel={() => { cancelHold(); if (touchStart.current) unlockScroll(); touchStart.current = null; }}
+        onContextMenu={e => e.preventDefault()}
+      >
       <span
         style={{
           fontSize: '0.8rem',
@@ -351,24 +338,6 @@ export function EngramBriefWidget({
           </span>
         )}
       </div>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginTop: 2,
-        }}
-      >
-        <span
-          style={{
-            fontSize: '0.8rem',
-            color: 'rgba(255,255,255,0.35)',
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {safeIdx + 1} / {activeCount}
-        </span>
-      </div>
       {noDiceMode && entry && entry.charges > 0 && (
         <button
           type="button"
@@ -392,6 +361,38 @@ export function EngramBriefWidget({
           Play ×{entry.charges}
         </button>
       )}
+      </div>
+      {/* Dedicated cycle zone — a plain tap always just advances to the
+          next equipped Engram, visually set apart from the charge/use body
+          by a divider and dimmer background so it reads as its own control
+          rather than part of the tap-to-charge gesture area. */}
+      <button
+        type="button"
+        onClick={() => next()}
+        aria-label={`Next Engram (${safeIdx + 1} of ${activeCount})`}
+        style={{
+          flexShrink: 0,
+          width: 34,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 2,
+          background: 'rgba(255,255,255,0.03)',
+          border: 'none',
+          borderLeft: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: '0 7px 7px 0',
+          color: 'rgba(255,255,255,0.55)',
+          cursor: 'pointer',
+          touchAction: 'manipulation',
+          padding: 0,
+        }}
+      >
+        <span style={{ fontSize: '1.05rem', lineHeight: 1 }} aria-hidden="true">›</span>
+        <span style={{ fontSize: '0.62rem', fontVariantNumeric: 'tabular-nums', opacity: 0.8 }}>
+          {safeIdx + 1}/{activeCount}
+        </span>
+      </button>
       {popup && (
         <div
           role="button"

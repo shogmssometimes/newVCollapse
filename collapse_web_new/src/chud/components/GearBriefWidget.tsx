@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { GearSlotEntry } from "../../types/chud";
 import { STANDARD_LONG_PRESS_MS } from "../../utils/gestureConstants";
 import { lockScroll, unlockScroll } from "../../utils/scrollLock";
@@ -10,8 +10,19 @@ function parseNonNegativeInt(raw: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-// Swipeable inventory summary widget. Long-press consumes one unit of the
-// active entry and writes the decrement back to the gear slots storage.
+// Movement past this, before a long-press is decided, cancels an in-flight
+// hold timer — a scroll/drag that happens to start on this widget
+// shouldn't also fire a tap-to-charge once the finger lifts.
+const MOVE_CANCEL_PX = 10;
+
+// Gear queue widget — mirrors EngramBriefWidget's layout and gestures: the
+// dedicated tap-to-cycle zone on the right advances through every entry
+// with QTY > 0; a tap anywhere on the main body builds up one more "charge"
+// (capped at the entry's remaining QTY); a long-press on the main body
+// consumes every currently-built-up charge at once, decrementing QTY by
+// that amount (and clearing the slot entirely if it hits 0). Cycling to a
+// different entry resets any unspent charge back to 0 — it's scoped to
+// whichever item is on screen, not carried to the next one.
 export function GearBriefWidget({
   entries,
   count,
@@ -24,9 +35,10 @@ export function GearBriefWidget({
   gearSlotsKey: string;
 }) {
   const [idx, setIdx] = useState(0);
+  const [chargeCount, setChargeCount] = useState(0);
   const [holdProgress, setHoldProgress] = useState(0); // 0–100
   const [flashOut, setFlashOut] = useState(false);
-  const touchStartX = useRef<number | null>(null);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const isHolding = useRef(false);
@@ -45,7 +57,6 @@ export function GearBriefWidget({
 
   const safeIdx = activeCount > 0 ? idx % activeCount : 0;
 
-  const prev = () => setIdx(i => (activeCount > 0 ? (i - 1 + activeCount) % activeCount : 0));
   const next = () => setIdx(i => (activeCount > 0 ? (i + 1) % activeCount : 0));
 
   const entry = activeCount > 0 ? (activeEntries[safeIdx] ?? null) : null;
@@ -57,6 +68,11 @@ export function GearBriefWidget({
   const entryOriginalIdx = entry ? entries.findIndex(e => e === entry) : -1;
 
   const canUse = entry !== null && (() => { const q = parseFloat(entry.qty); return !isNaN(q) && q > 0; })();
+  const availableQty = entry ? (() => { const q = parseFloat(entry.qty); return isNaN(q) ? 0 : q; })() : 0;
+
+  // A different entry on screen means a different item's charge — reset so
+  // taps never silently carry a build-up over to an unrelated item.
+  useEffect(() => { setChargeCount(0); }, [entryOriginalIdx]);
 
   const cancelHold = () => {
     if (holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current = null; }
@@ -75,6 +91,11 @@ export function GearBriefWidget({
     holdTimer.current = setTimeout(() => {
       holdFired.current = true;
       cancelHold();
+      // Long-press only spends charges that were actually built up by
+      // tapping first — same rule as the Engram queue's long-press.
+      if (chargeCount <= 0) return;
+      const spend = chargeCount;
+      setChargeCount(0);
       // decrement qty in localStorage
       try {
         const raw = window.localStorage.getItem(gearSlotsKey);
@@ -84,8 +105,8 @@ export function GearBriefWidget({
           const updated = arr.map((e, i) => {
             if (i !== entryOriginalIdx) return e;
             const q = parseFloat(e.qty);
-            const next = isNaN(q) || q <= 0 ? 0 : q - 1;
-            // Using the last unit clears the slot entirely instead of
+            const next = isNaN(q) || q <= 0 ? 0 : Math.max(0, q - spend);
+            // Using the last unit(s) clears the slot entirely instead of
             // leaving a stale qty-0 row behind.
             return next > 0 ? { ...e, qty: String(next) } : { name: '', units: '', qty: '' };
           });
@@ -167,104 +188,151 @@ export function GearBriefWidget({
           : 'rgba(8,13,23,0.92)',
         border: `1px solid ${borderColor}`,
         borderRadius: 8,
-        padding: '8px 10px',
         display: 'flex',
-        flexDirection: 'column',
-        gap: 4,
+        flexDirection: 'row',
         minWidth: 0,
-        userSelect: 'none',
-        WebkitUserSelect: 'none',
-        touchAction: 'none',
-        cursor: canUse ? 'pointer' : 'default',
         boxShadow,
         transition: holdProgress > 0 ? 'none' : 'background 0.3s, border-color 0.4s, box-shadow 0.4s',
       }}
-      onPointerDown={e => {
-        touchStartX.current = e.clientX;
-        e.currentTarget.setPointerCapture(e.pointerId);
-        lockScroll();
-        startHold();
-      }}
-      onPointerUp={e => {
-        const dx = touchStartX.current !== null ? e.clientX - touchStartX.current : 0;
-        const fired = holdFired.current;
-        cancelHold();
-        holdFired.current = false;
-        if (touchStartX.current !== null) unlockScroll();
-        if (!fired && Math.abs(dx) <= 30) {
-          next();
-        }
-        touchStartX.current = null;
-      }}
-      onPointerLeave={() => { cancelHold(); if (touchStartX.current !== null) unlockScroll(); touchStartX.current = null; }}
-      onPointerCancel={() => { cancelHold(); if (touchStartX.current !== null) unlockScroll(); touchStartX.current = null; }}
-      onContextMenu={e => e.preventDefault()}
     >
-      <span
-        style={{
-          fontSize: '0.8rem',
-          letterSpacing: '0.16em',
-          textTransform: 'uppercase',
-          color: isOverEncumbered ? 'rgba(255,100,100,0.9)' : 'var(--muted, #9aa0a6)',
-          textAlign: 'center',
-        }}
-      >
-        {isOverEncumbered ? '⚠ Over-Encumbered' : 'In Brief'}
-      </span>
       <div
         style={{
+          flex: 1,
+          padding: '8px 10px',
           display: 'flex',
-          alignItems: 'baseline',
-          justifyContent: 'center',
-          gap: 6,
+          flexDirection: 'column',
+          gap: 4,
           minWidth: 0,
-          overflow: 'hidden',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          touchAction: 'none',
+          cursor: canUse ? 'pointer' : 'default',
         }}
-      >
-        <span
-          style={{
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            fontSize: '0.88rem',
-            fontWeight: 600,
-            textAlign: 'center',
-            color: hasContent ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.3)',
-          }}
-        >
-          {nameText}
-        </span>
-        {hasContent && (
-          <span
-            style={{
-              fontSize: '0.75rem',
-              color: 'var(--accent, #0ff6ff)',
-              fontVariantNumeric: 'tabular-nums',
-              flexShrink: 0,
-            }}
-          >
-            ×{qtyText}
-          </span>
-        )}
-      </div>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginTop: 2,
+        onPointerDown={e => {
+          touchStart.current = { x: e.clientX, y: e.clientY };
+          e.currentTarget.setPointerCapture(e.pointerId);
+          lockScroll();
+          startHold();
         }}
+        onPointerMove={e => {
+          if (!touchStart.current || !isHolding.current) return;
+          const dx = e.clientX - touchStart.current.x;
+          const dy = e.clientY - touchStart.current.y;
+          if (Math.abs(dx) > MOVE_CANCEL_PX || Math.abs(dy) > MOVE_CANCEL_PX) {
+            cancelHold();
+          }
+        }}
+        onPointerUp={e => {
+          const start = touchStart.current;
+          const fired = holdFired.current;
+          cancelHold();
+          holdFired.current = false;
+          if (touchStart.current) unlockScroll();
+          touchStart.current = null;
+          if (fired || start === null) return;
+          // Cycling now lives entirely in the dedicated zone on the right —
+          // every release here that wasn't a long-press is a tap, and a tap
+          // always builds up one more charge, capped at the QTY actually
+          // on hand.
+          if (entry) {
+            setChargeCount(c => (c + 1 >= availableQty ? availableQty : c + 1));
+          }
+        }}
+        onPointerLeave={() => { cancelHold(); if (touchStart.current) unlockScroll(); touchStart.current = null; }}
+        onPointerCancel={() => { cancelHold(); if (touchStart.current) unlockScroll(); touchStart.current = null; }}
+        onContextMenu={e => e.preventDefault()}
       >
         <span
           style={{
             fontSize: '0.8rem',
-            color: 'rgba(255,255,255,0.35)',
-            fontVariantNumeric: 'tabular-nums',
+            letterSpacing: '0.16em',
+            textTransform: 'uppercase',
+            color: isOverEncumbered ? 'rgba(255,100,100,0.9)' : 'var(--muted, #9aa0a6)',
+            textAlign: 'center',
           }}
         >
-          {safeIdx + 1} / {activeCount}
+          {isOverEncumbered ? '⚠ Over-Encumbered' : 'In Brief'}
         </span>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'baseline',
+            justifyContent: 'center',
+            gap: 6,
+            minWidth: 0,
+            overflow: 'hidden',
+          }}
+        >
+          <span
+            style={{
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              fontSize: '0.88rem',
+              fontWeight: 600,
+              textAlign: 'center',
+              color: hasContent ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.3)',
+            }}
+          >
+            {nameText}
+          </span>
+          {hasContent && (
+            <span
+              style={{
+                fontSize: '0.75rem',
+                color: 'var(--accent, #0ff6ff)',
+                fontVariantNumeric: 'tabular-nums',
+                flexShrink: 0,
+              }}
+            >
+              ×{qtyText}
+            </span>
+          )}
+          {hasContent && chargeCount > 0 && (
+            <span
+              style={{
+                fontSize: '0.68rem',
+                color: 'rgba(120,220,140,0.9)',
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              ({chargeCount} built up)
+            </span>
+          )}
+        </div>
       </div>
+      {/* Dedicated cycle zone — a plain tap always just advances to the
+          next stocked Gear item, visually set apart from the charge/use
+          body by a divider and dimmer background so it reads as its own
+          control rather than part of the tap-to-charge gesture area. */}
+      <button
+        type="button"
+        onClick={() => next()}
+        aria-label={`Next Gear item (${safeIdx + 1} of ${activeCount})`}
+        style={{
+          flexShrink: 0,
+          width: 34,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 2,
+          background: 'rgba(255,255,255,0.03)',
+          border: 'none',
+          borderLeft: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: '0 7px 7px 0',
+          color: 'rgba(255,255,255,0.55)',
+          cursor: 'pointer',
+          touchAction: 'manipulation',
+          padding: 0,
+        }}
+      >
+        <span style={{ fontSize: '1.05rem', lineHeight: 1 }} aria-hidden="true">›</span>
+        <span style={{ fontSize: '0.62rem', fontVariantNumeric: 'tabular-nums', opacity: 0.8 }}>
+          {safeIdx + 1}/{activeCount}
+        </span>
+      </button>
     </div>
   );
 }

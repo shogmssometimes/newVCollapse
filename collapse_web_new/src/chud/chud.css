@@ -181,8 +181,12 @@ body::-webkit-scrollbar {
   font-size: 0.7rem;
   font-weight: 600;
   /* Collapse Modifiers contrast against regular white stat text (UX
-     request) so an active modifier never blends in as "just the number". */
-  color: #ff6b6b;
+     request) so an active modifier never blends in as "just the number".
+     !important because this span is nested inside .stat-label/.chip,
+     whose own "span" descendant-selector color rules (class+element,
+     higher specificity than this single class) would otherwise win and
+     silently repaint it back to the muted grey of the surrounding text. */
+  color: #ff6b6b !important;
 }
 
 .hp-direct-input {
@@ -360,7 +364,10 @@ body::-webkit-scrollbar {
 .core-value-modifier {
   font-size: 0.65rem;
   font-weight: 600;
-  color: #ff6b6b;
+  /* !important for the same reason as .hp-max-modifier above — nested
+     inside .chip, whose ".chip span" rule otherwise wins on specificity
+     and silently repaints this back to grey. */
+  color: #ff6b6b !important;
   margin-left: 4px;
   font-variant-numeric: tabular-nums;
 }

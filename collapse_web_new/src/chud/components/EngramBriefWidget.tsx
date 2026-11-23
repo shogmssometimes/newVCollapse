@@ -5,13 +5,17 @@ import { STANDARD_LONG_PRESS_MS } from "../../utils/gestureConstants";
 import { lockScroll, unlockScroll } from "../../utils/scrollLock";
 import { addSetRollRow } from "../../utils/chudVanillaBridge";
 
-// Lower than Gear's equivalent cycling gesture needs to be, since this
-// widget also has to tell a swipe apart from a tap-to-charge on the same
-// release — a 30px threshold (the old value) meant a swipe that fell even
-// a little short of it silently charged a stack instead of cycling,
-// which read as "swiping is broken" since the visible result (nothing
-// moved) looked identical to a missed/too-short swipe either way.
-const SWIPE_THRESHOLD_PX = 18;
+// Mirrors MOVE_CANCEL_PX below exactly — no dead zone in between. The old
+// 18px swipe threshold (itself already lowered from a 30px original) left
+// a gap between "moved enough to cancel the long-press hold" (10px) and
+// "moved enough to count as a swipe" (18px), where a release did nothing
+// at all; that gap read as Engram Q being less responsive than Gear Q's
+// equivalent widget (which has no deliberate-swipe-distance requirement:
+// any release that isn't a long-press and stayed within 30px just cycles).
+// Once a release has moved past the point where the hold timer already
+// gave up on it being a stationary tap, it's a swipe — there's nothing
+// else it could be.
+const SWIPE_THRESHOLD_PX = 10;
 // Movement past this, before a swipe/tap is decided, cancels an in-flight
 // long-press hold — otherwise a deliberate swipe-to-cycle gesture could
 // accidentally also fire the long-press activation partway through.
@@ -274,11 +278,10 @@ export function EngramBriefWidget({
         }
         // A tap charges/preps one more stack, wrapping back to 0 once at
         // max copies — a tap never spends anything, that's long-press's job.
-        // Gated to near-stationary releases only (same radius that cancels
-        // the hold timer above) — a swipe attempt that fell short of the
-        // cycle threshold but still moved the finger a real distance does
-        // nothing instead of silently charging a stack it wasn't aiming at.
-        if (Math.abs(dx) > MOVE_CANCEL_PX) return;
+        // Reaching here means |dx| <= SWIPE_THRESHOLD_PX (checked above),
+        // which is itself equal to MOVE_CANCEL_PX, so every release that
+        // isn't a swipe is already a near-stationary tap — no separate
+        // movement check needed.
         if (entry) {
           addEngramCharge(storageKey, entry.id);
           setFlashIn(true);

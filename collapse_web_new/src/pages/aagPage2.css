@@ -794,6 +794,13 @@
   color: rgba(248, 250, 252, 0.5);
 }
 
+.aag-page2 .collapse-modifiers-open-summary-active {
+  /* At least one Collapse Modifier is non-zero — call it out in red so
+     players never miss that something is silently affecting their rolls. */
+  color: #ff6b6b;
+  font-weight: 700;
+}
+
 .aag-page2 .collapse-mod-subhead {
   font-size: 0.68rem;
   font-family: var(--font-display);
@@ -826,6 +833,12 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: rgba(248, 250, 252, 0.55);
+}
+
+.aag-page2 .collapse-mod-field-label-active {
+  /* Highlights a modifier's label red once it's non-zero, so the GM/player
+     editing these can see at a glance which ones are currently active. */
+  color: #ff6b6b !important;
 }
 
 .aag-page2 .collapse-mod-field input {

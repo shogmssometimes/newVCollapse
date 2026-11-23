@@ -8,8 +8,20 @@ import type { DieSides } from "../../domain/approachDice";
 import { rollFlatDice } from "../../domain/approachDice";
 import { createLongPressHandlers } from "../../utils/createLongPressHandlers";
 import { CORE_APPROACH_MAP, APPROACH_LABELS, CORE_LABELS } from "../../domain/coreApproachMap";
-import { DEFAULT_COLLAPSE_MODIFIERS, formatStatWithModifier } from "../../domain/chudStats";
+import { DEFAULT_COLLAPSE_MODIFIERS } from "../../domain/chudStats";
 import { isNoDiceMode, subscribeNoDiceMode } from "../../utils/noDiceMode";
+
+// Renders a Collapse Modifier's "(+N)"/"(−N)" suffix in red so it visibly
+// contrasts with the plain white stat text next to it — same red used by
+// HPPanel's hp-max-modifier and StatCard's core-value-modifier badges.
+function ModifierBadge({ modifier }: { modifier: number }) {
+  if (!modifier) return null;
+  return (
+    <span className="core-value-modifier">
+      ({modifier > 0 ? "+" : "−"}{Math.abs(modifier)})
+    </span>
+  );
+}
 
 // Matches ApproachDie.tsx's Method-roll tumble animation timing exactly, so
 // the Readiness roll "feels" like the same dice engine rather than a
@@ -171,15 +183,10 @@ export function Page2Panel({
           }
         >
           <span>READINESS</span>
-          {noDiceMode ? (
-            <strong style={isOverEncumbered ? { color: 'rgba(255,100,100,0.95)', fontStyle: 'italic' } : undefined}>
-              {isOverEncumbered ? 'Last' : `1d10 + ${formatStatWithModifier(readyness, collapseModifiers.readiness)}`}
-            </strong>
-          ) : (
-            <strong style={isOverEncumbered ? { color: 'rgba(255,100,100,0.95)', fontStyle: 'italic' } : undefined}>
-              {isOverEncumbered ? 'Last' : formatStatWithModifier(readyness, collapseModifiers.readiness)}
-            </strong>
-          )}
+          <strong style={isOverEncumbered ? { color: 'rgba(255,100,100,0.95)', fontStyle: 'italic' } : undefined}>
+            {isOverEncumbered ? 'Last' : readyness}
+            {!isOverEncumbered && <ModifierBadge modifier={collapseModifiers.readiness} />}
+          </strong>
         </div>
         <button className="topbar-square-btn" onClick={onOpenMgr}>
           MGR
@@ -229,7 +236,7 @@ export function Page2Panel({
         // player to add them by hand at the table.
         <div className="chip" style={{ fontStyle: "italic", opacity: 0.85 }}>
           <span>Totals</span>
-          <strong>
+          <strong style={{ color: "#ff6b6b" }}>
             {collapseModifiers.totalAll !== 0 ? `${collapseModifiers.totalAll >= 0 ? "+" : ""}${collapseModifiers.totalAll} every roll` : null}
             {collapseModifiers.totalAll !== 0 && collapseModifiers.totalAttackDefense !== 0 ? ", " : null}
             {collapseModifiers.totalAttackDefense !== 0
@@ -255,11 +262,11 @@ export function Page2Panel({
       <div className="core-grid row-compact-3">
         <div className="chip">
           <span>Capacity</span>
-          <strong>{formatStatWithModifier(capacity, collapseModifiers.capacity)}</strong>
+          <strong>{capacity}<ModifierBadge modifier={collapseModifiers.capacity} /></strong>
         </div>
         <div className="chip">
           <span>Inv Slots</span>
-          <strong>{formatStatWithModifier(inventorySlots, collapseModifiers.inventorySlots)}</strong>
+          <strong>{inventorySlots}<ModifierBadge modifier={collapseModifiers.inventorySlots} /></strong>
         </div>
       </div>
 

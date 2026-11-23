@@ -12,7 +12,7 @@ type NoteModule = {
 
 const createModule = (overrides?: Partial<NoteModule>): NoteModule => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-  title: 'Untitled',
+  title: '',
   content: '',
   collapsed: true,
   ...overrides,
@@ -235,7 +235,7 @@ export default function NotesPage({ storageKey = NOTES_STORAGE_KEY }: { storageK
 
         <button
           type="button"
-          onClick={() => setModules((prev) => [...prev, createModule({ title: 'Untitled' })])}
+          onClick={() => setModules((prev) => [...prev, createModule()])}
           style={{
             borderRadius: 14,
             border: '1px solid rgba(99,255,177,0.4)',

@@ -206,22 +206,17 @@ export default function Chud() {
     return fullySpent;
   }, [approach, approachWardrobeBonus, collapseModifiers]);
 
-  // No Dice Mode: tapping a pip directly flips exactly 1 die the other
-  // way — spending one via the same overloadApproachDie path if it was
-  // available, or restoring one (mirrors receiveGanbare's restore, but
-  // keyed off the Method the tapped pip actually belongs to) if it was
-  // already spent.
+  // No Dice Mode: tapping an available pip spends it directly via the
+  // same overloadApproachDie path a dice-mode Overload gesture uses.
+  // Tapping an already-spent pip does nothing — by design, only Full Rest
+  // (resetApproachOverload) or a friend's Ganbare! (receiveGanbare) return
+  // an Overloaded die in No Dice Mode. A tap-to-restore here would let a
+  // player silently undo an Overload with no record/cost at all, unlike
+  // Dice Mode's Grit "Ignore Overload" (which still spends Grit).
   const toggleOverloadApproachPip = useCallback(
     (field: keyof ApproachStats, origin: "base" | "wardrobe", wasSpent: boolean): void => {
-      if (!wasSpent) {
-        overloadApproachDie(field, origin === "base" ? 1 : 0, origin === "wardrobe" ? 1 : 0);
-        return;
-      }
-      if (origin === "base") {
-        setApproachOverloadSpent((prev) => ({ ...prev, [field]: Math.max(0, (prev[field] ?? 0) - 1) }));
-      } else {
-        setApproachWardrobeOverloadSpent((prev) => ({ ...prev, [field]: Math.max(0, (prev[field] ?? 0) - 1) }));
-      }
+      if (wasSpent) return;
+      overloadApproachDie(field, origin === "base" ? 1 : 0, origin === "wardrobe" ? 1 : 0);
     },
     [overloadApproachDie]
   );
@@ -493,6 +488,7 @@ export default function Chud() {
             onHpSet={(next) => applyHpDelta(next - hpCounter)}
             ganbareRemaining={ganbareRemaining}
             ganbareMax={ganbareMax}
+            ganbareMaxModifier={collapseModifiers.ganbareCharges}
             onSpendGanbare={spendGanbareCharge}
             gearEntries={gearEntries}
             gearSlotsUsed={gearSlotsUsed}

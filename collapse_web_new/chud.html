@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
     <link rel="manifest" href="../manifest.webmanifest" />
     <link rel="apple-touch-icon" sizes="180x180" href="../icons/icon-180.png" />
     <meta name="theme-color" content="#0f0f0f" />
@@ -10,6 +10,17 @@
     <style>
       ::selection{background:transparent !important;color:inherit !important}
     </style>
+    <script>
+      // See index.html for why both the viewport meta and this listener
+      // pair are needed to actually stop pinch-to-zoom everywhere — the
+      // HUD is its own iframe document, so it needs this independently
+      // of the parent page's copy.
+      document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+      document.addEventListener('gesturechange', function (e) { e.preventDefault(); });
+      document.addEventListener('touchmove', function (e) {
+        if (e.touches && e.touches.length > 1) e.preventDefault();
+      }, { passive: false });
+    </script>
     <!-- Not processed by Vite — already present in public/chud/ -->
     <script src="./meter-bridge.js"></script>
   </head>

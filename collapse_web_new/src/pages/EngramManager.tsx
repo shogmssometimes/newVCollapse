@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { computeDerived, withCollapseModifiers } from "../domain/chudStats";
 import { loadState } from "../utils/chudPersistence";
 import { engramCatalog } from "../data/handbook/engramCatalog";
@@ -8,6 +8,7 @@ import {
   type EngramManagerState,
 } from "../utils/engramState";
 import { EngramBriefWidget } from "../chud/components/EngramBriefWidget";
+import { STANDARD_LONG_PRESS_MS } from "../utils/gestureConstants";
 
 // Player-facing Engram Manager: spell-slot style — equip copies of an
 // Engram (capped by Capacity), one row per Engram, spread however many
@@ -34,6 +35,22 @@ export default function EngramManager({
   const [collapseModifiers, setCollapseModifiers] = useState(() =>
     withCollapseModifiers(loadState(chudStateStorageKey)?.collapseModifiers)
   );
+  // Prevents accidental add/remove taps once a player is happy with their
+  // loadout. Tap to lock; long-press to unlock — same asymmetric gesture
+  // the handbook UX elsewhere uses for "easy to engage, hard to undo by
+  // accident" (e.g. Grit's spend vs. its Full Rest-only refund).
+  const lockedStorageKey = `${storageKey}.locked`;
+  const [locked, setLocked] = useState(() => {
+    try { return window.localStorage.getItem(lockedStorageKey) === "1"; } catch { return false; }
+  });
+  const unlockHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelUnlockHold = () => {
+    if (unlockHoldTimer.current) { clearTimeout(unlockHoldTimer.current); unlockHoldTimer.current = null; }
+  };
+  const persistLocked = (next: boolean) => {
+    setLocked(next);
+    try { window.localStorage.setItem(lockedStorageKey, next ? "1" : "0"); } catch { /* ignore */ }
+  };
 
   useEffect(() => {
     const handler = (e: StorageEvent) => {
@@ -68,6 +85,7 @@ export default function EngramManager({
 
   const changeCopies = useCallback(
     (id: string, level: number, delta: number) => {
+      if (locked) return;
       const current = state.equipped[id]?.copies ?? 0;
       const next = current + delta;
       if (next < 0) return;
@@ -75,13 +93,30 @@ export default function EngramManager({
       setEngramCopies(storageKey, id, next);
       refresh();
     },
-    [state.equipped, capacityRemaining, storageKey, refresh]
+    [state.equipped, capacityRemaining, storageKey, refresh, locked]
   );
 
   return (
     <div className="page engram-manager">
       <div className="engram-manager-header">
         <h2>Engrams</h2>
+        <button
+          type="button"
+          className={`engram-lock-btn${locked ? " locked" : ""}`}
+          aria-pressed={locked}
+          title={locked ? "Long-press to unlock" : "Tap to lock (long-press to unlock once locked)"}
+          onClick={() => { if (!locked) persistLocked(true); }}
+          onPointerDown={() => {
+            if (!locked) return;
+            cancelUnlockHold();
+            unlockHoldTimer.current = setTimeout(() => { persistLocked(false); }, STANDARD_LONG_PRESS_MS);
+          }}
+          onPointerUp={cancelUnlockHold}
+          onPointerLeave={cancelUnlockHold}
+          onPointerCancel={cancelUnlockHold}
+        >
+          {locked ? "🔒 Locked" : "🔓 Unlocked"}
+        </button>
         <div className={`engram-capacity-readout${isOverCapacity ? " over-capacity" : ""}`}>
           Capacity: <strong>{capacityUsed}</strong> / {capacity}
         </div>
@@ -120,11 +155,11 @@ export default function EngramManager({
               </div>
               <div className="engram-row-controls">
                 <div className="engram-copies-stepper" role="group" aria-label={`${def.name} copies owned`}>
-                  <button type="button" onClick={() => changeCopies(def.id, def.level, -1)} disabled={copies <= 0}>
+                  <button type="button" onClick={() => changeCopies(def.id, def.level, -1)} disabled={locked || copies <= 0}>
                     −
                   </button>
                   <span className="engram-copies-count">{copies}</span>
-                  <button type="button" onClick={() => changeCopies(def.id, def.level, 1)} disabled={!canAddCopy}>
+                  <button type="button" onClick={() => changeCopies(def.id, def.level, 1)} disabled={locked || !canAddCopy}>
                     +
                   </button>
                 </div>

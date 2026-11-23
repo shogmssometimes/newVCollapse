@@ -200,7 +200,7 @@ export default function AagPage({
           collapseModifiersWidget={
             <button type="button" className="collapse-modifiers-open-btn" onClick={onOpenModifiers}>
               <span>Modifiers</span>
-              <span className="collapse-modifiers-open-summary">{modifiersSummary}</span>
+              <span className={`collapse-modifiers-open-summary${activeModifierCount > 0 ? " collapse-modifiers-open-summary-active" : ""}`}>{modifiersSummary}</span>
             </button>
           }
         />

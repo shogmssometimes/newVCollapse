@@ -337,7 +337,13 @@ function SlotRow({ index, entry, onChange, overCapacity }: {
         inputMode="numeric"
         placeholder="0"
         value={entry.qty}
-        onChange={e => onChange({ ...entry, qty: sanitizeNonNegativeIntInput(e.target.value) })}
+        onChange={e => {
+          const qty = sanitizeNonNegativeIntInput(e.target.value)
+          // Typing the qty down to 0 "uses up" the item the same way the
+          // long-press USE gesture does — clear the whole row so the slot
+          // is free for something else instead of leaving a dead 0-qty entry.
+          onChange(qty === '0' ? { ...EMPTY_ENTRY } : { ...entry, qty })
+        }}
         style={FIELD_STYLE}
       />
     </div>
@@ -599,6 +605,9 @@ export default function GearPage({
   const [slotFilter, setSlotFilter] = useState<GearSlot | null>(null)
   const [rarityFilter, setRarityFilter] = useState<GearRarity | null>(null)
   const [search, setSearch] = useState('')
+  const [sizeSortDir, setSizeSortDir] = useState<'asc' | 'desc' | null>(null)
+  const [addedToast, setAddedToast] = useState<string | null>(null)
+  const addedToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [chudSlots, setChudSlots] = useState<number | null>(() => readChudInventorySlots(chudStateStorageKey))
   const [entries, setEntries] = useState<SlotEntry[]>(() => loadGearEntries(gearSlotsStorageKey))
   const [wardrobe, setWardrobe] = useState<WardrobeEntry[]>(() => loadWardrobe(wardrobeStorageKey))
@@ -675,6 +684,11 @@ export default function GearPage({
       }
       return next
     })
+    // Small, non-interactive confirmation — fades on its own, nothing to
+    // tap or dismiss.
+    if (addedToastTimer.current) clearTimeout(addedToastTimer.current)
+    setAddedToast(`${item.name} added`)
+    addedToastTimer.current = setTimeout(() => setAddedToast(null), 1800)
   }
 
   const inventorySlots = chudSlots ?? 0
@@ -716,6 +730,10 @@ export default function GearPage({
     localStorage.setItem(wardrobeStorageKey, JSON.stringify(wardrobe))
   }, [wardrobe, wardrobeStorageKey])
 
+  useEffect(() => () => {
+    if (addedToastTimer.current) clearTimeout(addedToastTimer.current)
+  }, [])
+
   const handleWardrobeChange = (index: number, field: keyof WardrobeEntry, value: string) =>
     setWardrobe(prev => {
       const next = [...prev]
@@ -734,7 +752,7 @@ export default function GearPage({
   }, [])
 
   const filtered = useMemo(() => {
-    return gear.filter(item => {
+    const result = gear.filter(item => {
       if (slotFilter && item.slot !== slotFilter) return false
       if (rarityFilter && item.rarity !== rarityFilter) return false
       if (search) {
@@ -743,7 +761,20 @@ export default function GearPage({
       }
       return true
     })
-  }, [slotFilter, rarityFilter, search])
+    if (sizeSortDir) {
+      const sorted = [...result]
+      const sizeOf = (item: GearItem) => {
+        const n = typeof item.cost === 'number' ? item.cost : parseFloat(String(item.cost ?? ''))
+        return Number.isFinite(n) ? n : 0
+      }
+      sorted.sort((a, b) => {
+        const diff = sizeOf(a) - sizeOf(b)
+        return sizeSortDir === 'asc' ? diff : -diff
+      })
+      return sorted
+    }
+    return result
+  }, [slotFilter, rarityFilter, search, sizeSortDir])
 
   const grouped = useMemo(() => {
     if (slotFilter) return { [slotFilter]: filtered }
@@ -761,49 +792,34 @@ export default function GearPage({
 
   return (
     <div className="page" style={{ maxWidth: 680, margin: '0 auto', padding: '1.25rem 1rem 2rem' }}>
+      {addedToast && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            top: 12,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1000,
+            background: 'rgba(10,16,28,0.95)',
+            border: '1px solid rgba(61,232,192,0.4)',
+            borderRadius: 20,
+            padding: '6px 16px',
+            fontSize: '0.78rem',
+            color: '#3de8c0',
+            pointerEvents: 'none',
+            opacity: 0.95,
+          }}
+        >
+          {addedToast}
+        </div>
+      )}
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ margin: '0 0 4px 0' }}>Wardrobe &amp; Gear</h1>
       </div>
 
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap' }}>
-        <InventoryGrid
-          slots={inventorySlots}
-          synced={chudSlots !== null}
-          slotsUsed={slotsUsed}
-        />
-
-        {isOverEncumbered && (
-          <div
-            style={{
-              flex: '1 1 0',
-              minWidth: 220,
-              padding: '10px 14px',
-              borderRadius: 8,
-              border: '1px solid rgba(212,43,43,0.6)',
-              background: 'linear-gradient(135deg, rgba(212,43,43,0.14), rgba(180,20,20,0.08))',
-              boxShadow: '0 0 18px rgba(212,43,43,0.18)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-            }}
-          >
-            <span style={{ fontSize: '1rem', lineHeight: 1 }}>⚠</span>
-            <div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.8rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,100,100,0.95)', fontWeight: 700 }}>
-                Over-Encumbered
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: 3 }}>
-                Carrying {Math.round(slotsUsed)} / {inventorySlots} slots
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <InventoryEntries count={visibleRowCount} capacity={inventorySlots} entries={entries} onEntryChange={handleEntryChange} />
-
       {/* ── Wardrobe ─────────────────────────────────────── */}
-      <div style={{ marginTop: 32, marginBottom: 32 }}>
+      <div style={{ marginTop: 0, marginBottom: 32 }}>
         <h2 style={{
           margin: '0 0 12px 0',
           fontSize: '0.75rem',
@@ -920,6 +936,44 @@ export default function GearPage({
         ))}
       </div>
 
+      {/* ── Inventory visual counter ─────────────────────── */}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap' }}>
+        <InventoryGrid
+          slots={inventorySlots}
+          synced={chudSlots !== null}
+          slotsUsed={slotsUsed}
+        />
+
+        {isOverEncumbered && (
+          <div
+            style={{
+              flex: '1 1 0',
+              minWidth: 220,
+              padding: '10px 14px',
+              borderRadius: 8,
+              border: '1px solid rgba(212,43,43,0.6)',
+              background: 'linear-gradient(135deg, rgba(212,43,43,0.14), rgba(180,20,20,0.08))',
+              boxShadow: '0 0 18px rgba(212,43,43,0.18)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <span style={{ fontSize: '1rem', lineHeight: 1 }}>⚠</span>
+            <div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.8rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,100,100,0.95)', fontWeight: 700 }}>
+                Over-Encumbered
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: 3 }}>
+                Carrying {Math.round(slotsUsed)} / {inventorySlots} slots
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <InventoryEntries count={visibleRowCount} capacity={inventorySlots} entries={entries} onEntryChange={handleEntryChange} />
+
       {/* ── Gear browser ─────────────────────────────────── */}
       {gear.length === 0 ? (
         <div className="muted" style={{ textAlign: 'center', padding: '3rem 0' }}>
@@ -997,6 +1051,31 @@ export default function GearPage({
               {r}
             </button>
           ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span className="muted" style={{ fontSize: '0.72rem', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            Sort by size
+          </span>
+          <button
+            onClick={() => setSizeSortDir(d => d === 'asc' ? 'desc' : d === 'desc' ? null : 'asc')}
+            style={{
+              background: sizeSortDir ? 'var(--accent)' : 'rgba(255,255,255,0.06)',
+              color: sizeSortDir ? '#000' : 'inherit',
+              border: '1px solid var(--border)',
+              borderRadius: 20,
+              padding: '4px 12px',
+              minHeight: 32,
+              display: 'flex',
+              alignItems: 'center',
+              fontSize: '0.75rem',
+              cursor: 'pointer',
+              letterSpacing: '0.06em',
+              fontFamily: 'var(--font-display)',
+            }}
+          >
+            {sizeSortDir === 'asc' ? 'Smallest first' : sizeSortDir === 'desc' ? 'Largest first' : 'Off'}
+          </button>
         </div>
       </div>
 

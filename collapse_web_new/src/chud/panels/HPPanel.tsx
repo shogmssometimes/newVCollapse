@@ -19,6 +19,7 @@ export function HPPanel({
   onHpSet,
   ganbareRemaining,
   ganbareMax,
+  ganbareMaxModifier = 0,
   onSpendGanbare,
   gearEntries,
   gearSlotsUsed,
@@ -42,6 +43,8 @@ export function HPPanel({
   /** Ganbare! Charges (the friend-assistance economy) — rendered to the right of HP. */
   ganbareRemaining: number;
   ganbareMax: number;
+  /** Collapse Table ± adjustment already baked into ganbareMax, shown as a "(±N)" badge next to it (same pattern as hpMaxModifier). */
+  ganbareMaxModifier?: number;
   onSpendGanbare: () => void;
   gearEntries: GearSlotEntry[] | null;
   gearSlotsUsed: number;
@@ -147,6 +150,11 @@ export function HPPanel({
           <span>Ganbare!</span>
           <strong>
             {ganbareRemaining}/{ganbareMax}
+            {ganbareMaxModifier !== 0 && (
+              <span className="hp-max-modifier">
+                {" "}({ganbareMaxModifier > 0 ? "+" : "−"}{Math.abs(ganbareMaxModifier)})
+              </span>
+            )}
           </strong>
         </button>
       </div>

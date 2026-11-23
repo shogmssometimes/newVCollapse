@@ -5,7 +5,13 @@ import { STANDARD_LONG_PRESS_MS } from "../../utils/gestureConstants";
 import { lockScroll, unlockScroll } from "../../utils/scrollLock";
 import { addSetRollRow } from "../../utils/chudVanillaBridge";
 
-const SWIPE_THRESHOLD_PX = 30;
+// Lower than Gear's equivalent cycling gesture needs to be, since this
+// widget also has to tell a swipe apart from a tap-to-charge on the same
+// release — a 30px threshold (the old value) meant a swipe that fell even
+// a little short of it silently charged a stack instead of cycling,
+// which read as "swiping is broken" since the visible result (nothing
+// moved) looked identical to a missed/too-short swipe either way.
+const SWIPE_THRESHOLD_PX = 18;
 // Movement past this, before a swipe/tap is decided, cancels an in-flight
 // long-press hold — otherwise a deliberate swipe-to-cycle gesture could
 // accidentally also fire the long-press activation partway through.
@@ -38,10 +44,10 @@ export function EngramBriefWidget({
   storageKey: string;
   /** Stages a roll-type Engram's charge count as the shared standby chip in every Method roll popup. Omitted on the Engram Manager's equip-screen preview, where there's no roller to stage into. */
   onStageForRoller?: (id: string, name: string, charges: number) => void;
-  /** No Dice Mode (C2): the long-press-to-activate gesture is replaced by
-   * a visible "Play ×N" button — there's no roller to stage into, so
-   * playing an Engram spends its charges immediately and shows a toast
-   * instead. Swipe-to-cycle and tap-to-charge are unchanged. */
+  /** No Dice Mode (C2): there's no roller to stage into, so both the
+   * long-press gesture and the visible "Play ×N" button spend an
+   * Engram's charges immediately and show a toast instead of staging a
+   * roll. Swipe-to-cycle and tap-to-charge are unchanged. */
   noDiceMode?: boolean;
 }) {
   const [idx, setIdx] = useState(0);
@@ -54,13 +60,13 @@ export function EngramBriefWidget({
   const isHolding = useRef(false);
   const holdFired = useRef(false);
 
-  // No Dice Mode "Engram Played" toast auto-dismisses after ~2s — unlike
+  // No Dice Mode "Engram Played" toast auto-dismisses after ~3.5s — unlike
   // the staged/effect popups (which the player explicitly taps to close
   // before continuing), it previously stayed up and could cover the new
   // Set Rolls row that playEngram() just opened under it.
   useEffect(() => {
     if (popup?.kind !== "played") return;
-    const t = setTimeout(() => setPopup(null), 2000);
+    const t = setTimeout(() => setPopup(null), 3500);
     return () => clearTimeout(t);
   }, [popup]);
 
@@ -79,7 +85,12 @@ export function EngramBriefWidget({
 
   const entry = activeCount > 0 ? (activeEntries[safeIdx] ?? null) : null;
   const nameText = entry?.name.trim() || '—';
-  const chargesText = entry ? `${entry.charges}/${entry.copies}` : '0';
+  // Gear-style countdown of uses actually remaining before a Rest (like
+  // Gear's "×N" qty), not "currently charged / copies owned" — the old
+  // "charges/copies" text (e.g. "0/4") never moved when a stack was spent,
+  // since spending zeroes `charges` right back to the same number a fresh,
+  // never-tapped Engram also shows at — it read as "nothing happened."
+  const usesLeftText = entry ? `${entry.usesLeft}` : '0';
   const hasContent = !!entry;
 
   const cancelHold = () => {
@@ -99,7 +110,10 @@ export function EngramBriefWidget({
     holdTimer.current = setTimeout(() => {
       holdFired.current = true;
       cancelHold();
-      activate();
+      // No Dice Mode: long-press also spends charges immediately (same as
+      // the visible "Play ×N" button) instead of staging a roll — there's
+      // no roller to stage into here.
+      if (noDiceMode) playEngram(); else activate();
     }, STANDARD_LONG_PRESS_MS);
   };
 
@@ -225,9 +239,9 @@ export function EngramBriefWidget({
         // fighting the same finger movement makes the swipe-to-cycle and
         // long-press-to-activate gestures here harder to land.
         lockScroll();
-        // No Dice Mode: activation is a visible Play button, not a
-        // long-press — don't start the hold-to-activate timer.
-        if (!noDiceMode) startHold();
+        // Long-press activates in both modes: Dice Mode stages the roll,
+        // No Dice Mode plays immediately (same effect as the Play button).
+        startHold();
       }}
       onPointerMove={e => {
         if (!touchStart.current || !isHolding.current) return;
@@ -260,6 +274,11 @@ export function EngramBriefWidget({
         }
         // A tap charges/preps one more stack, wrapping back to 0 once at
         // max copies — a tap never spends anything, that's long-press's job.
+        // Gated to near-stationary releases only (same radius that cancels
+        // the hold timer above) — a swipe attempt that fell short of the
+        // cycle threshold but still moved the finger a real distance does
+        // nothing instead of silently charging a stack it wasn't aiming at.
+        if (Math.abs(dx) > MOVE_CANCEL_PX) return;
         if (entry) {
           addEngramCharge(storageKey, entry.id);
           setFlashIn(true);
@@ -313,7 +332,19 @@ export function EngramBriefWidget({
               flexShrink: 0,
             }}
           >
-            {chargesText}
+            ×{usesLeftText}
+          </span>
+        )}
+        {hasContent && entry && entry.charges > 0 && (
+          <span
+            style={{
+              fontSize: '0.68rem',
+              color: 'rgba(120,220,140,0.9)',
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            ({entry.charges} charged)
           </span>
         )}
       </div>

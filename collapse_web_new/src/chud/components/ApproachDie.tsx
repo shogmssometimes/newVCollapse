@@ -144,6 +144,7 @@ export function ApproachDie({
   noDiceMode = false,
   onToggleOverloadPip,
   inference = 0,
+  methodDiceModifier = 0,
 }: {
   label: string
   /** Core-distributed rating alone (before Wardrobe) — the track's full/ghost count and the base Overload-spendable pool size. */
@@ -191,6 +192,10 @@ export function ApproachDie({
   /** Inference stat (Dice Mode only) — gates the Use Skill button (shown
    * when >= 1) and is its silent per-roll reroll cap. */
   inference?: number
+  /** Collapse Table ± adjustment to this Method's own dice pool (already
+   * baked into baseRating) — shown as a red "(±N)" badge next to the
+   * Method name so it's never applied silently. */
+  methodDiceModifier?: number
 }) {
   const wardrobeAvail = wardrobeAvailable ?? wardrobeBonus
   // Restored once per mount — see the "unresolved roll persistence" doc
@@ -1242,6 +1247,11 @@ export function ApproachDie({
           aria-hidden="true"
         />
         <span className="method-row-name">{label}</span>
+        {methodDiceModifier !== 0 && (
+          <span className="core-value-modifier">
+            ({methodDiceModifier > 0 ? "+" : "−"}{Math.abs(methodDiceModifier)})
+          </span>
+        )}
       </button>
 
       {/* The track is a CSS Grid with one equal-width (1fr) column per
@@ -1285,10 +1295,18 @@ export function ApproachDie({
           const isWardrobe = pip.origin === "wardrobe"
           const isAvailable = !pip.spent
           const isPreview = armed && isAvailable
+          // Only an available pip is tappable in No Dice Mode — spending
+          // it. A spent pip no longer restores on tap (see
+          // toggleOverloadApproachPip in Chud.tsx): only Full Rest or a
+          // friend's Ganbare! bring it back, so it gets no button
+          // affordance/role here, just the stopPropagation below so a tap
+          // on it still doesn't fall through to the row's own
+          // hold-then-swipe-to-roll gesture.
+          const noDiceTappable = noDiceMode && isAvailable
           return (
             <span
               key={pip.key}
-              className={`method-die-pip${isWardrobe ? " wardrobe" : ""}${isAvailable ? " available" : " spent"}${isPreview ? " drag-preview" : ""}${noDiceMode ? " no-dice-tappable" : ""}`}
+              className={`method-die-pip${isWardrobe ? " wardrobe" : ""}${isAvailable ? " available" : " spent"}${isPreview ? " drag-preview" : ""}${noDiceTappable ? " no-dice-tappable" : ""}`}
               style={{ gridColumn: slot, WebkitUserSelect: noDiceMode ? "none" : undefined, WebkitTouchCallout: noDiceMode ? "none" : undefined }}
               title={
                 isWardrobe
@@ -1296,9 +1314,9 @@ export function ApproachDie({
                   : undefined
               }
               aria-hidden={isWardrobe ? undefined : "true"}
-              role={noDiceMode ? "button" : undefined}
+              role={noDiceTappable ? "button" : undefined}
               onPointerDown={noDiceMode ? (event) => event.stopPropagation() : undefined}
-              onClick={noDiceMode ? () => onToggleOverloadPip?.(pip.origin, pip.spent) : undefined}
+              onClick={noDiceTappable ? () => onToggleOverloadPip?.(pip.origin, pip.spent) : undefined}
             >
               {slot}
             </span>
@@ -1527,7 +1545,11 @@ export function ApproachDie({
                       : `${dieMax} die`}
                     {engramBonusTotal > 0 ? ` + ${engramBonusTotal} Engram` : ""}
                     {gritBonusDie !== null ? ` + ${gritBonusDie} Grit` : ""}
-                    {totalAllModifier !== 0 ? ` ${totalAllModifier > 0 ? "+" : "−"} ${Math.abs(totalAllModifier)} Collapse` : ""})
+                    {totalAllModifier !== 0 ? (
+                      <span className="core-value-modifier">
+                        {" "}{totalAllModifier > 0 ? "+" : "−"} {Math.abs(totalAllModifier)} Collapse
+                      </span>
+                    ) : ""})
                   </span>
                 )}
               </div>
@@ -1554,7 +1576,11 @@ export function ApproachDie({
             <div className="approach-margin-input">
               {totalAttackDefenseModifier !== 0 && (
                 <div className="approach-margin-attacker-total">
-                  Attacker Total: {marginBase} ({displayTotal} {totalAttackDefenseModifier > 0 ? "+" : "−"} {Math.abs(totalAttackDefenseModifier)} Collapse)
+                  Attacker Total: {marginBase} ({displayTotal}{" "}
+                  <span className="core-value-modifier">
+                    {totalAttackDefenseModifier > 0 ? "+" : "−"} {Math.abs(totalAttackDefenseModifier)} Collapse
+                  </span>
+                  )
                 </div>
               )}
               <label className="approach-margin-label" htmlFor={`opposition-${label}`}>

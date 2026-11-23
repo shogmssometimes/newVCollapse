@@ -179,8 +179,10 @@ body::-webkit-scrollbar {
 
 .hp-max-modifier {
   font-size: 0.7rem;
-  font-weight: 400;
-  color: rgba(248, 250, 252, 0.5);
+  font-weight: 600;
+  /* Collapse Modifiers contrast against regular white stat text (UX
+     request) so an active modifier never blends in as "just the number". */
+  color: #ff6b6b;
 }
 
 .hp-direct-input {
@@ -357,7 +359,8 @@ body::-webkit-scrollbar {
 
 .core-value-modifier {
   font-size: 0.65rem;
-  color: rgba(248, 250, 252, 0.6);
+  font-weight: 600;
+  color: #ff6b6b;
   margin-left: 4px;
   font-variant-numeric: tabular-nums;
 }

@@ -294,6 +294,7 @@ export function ApproachPanel({
                     onRefundEngram={onRefundEngram}
                     totalAllModifier={collapseModifiers.totalAll}
                     totalAttackDefenseModifier={collapseModifiers.totalAttackDefense}
+                    methodDiceModifier={collapseModifiers.methodDice[field] ?? 0}
                     noDiceMode={noDiceMode}
                     onToggleOverloadPip={onToggleOverloadPip ? (origin, wasSpent) => onToggleOverloadPip(field, origin, wasSpent) : undefined}
                     inference={core.inference}

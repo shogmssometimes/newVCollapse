@@ -2,12 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <link rel="manifest" href="manifest.webmanifest" />
     <meta name="theme-color" content="#0f0f0f" />
     <title>Collapse GM Companion</title>
-    <script type="module" crossorigin src="./assets/gm-YQ81dD9f.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/gm-DxeN94Nx.css">
+    <script>
+      // See index.html for why both the viewport meta and this listener
+      // pair are needed to actually stop pinch-to-zoom everywhere.
+      document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+      document.addEventListener('gesturechange', function (e) { e.preventDefault(); });
+      document.addEventListener('touchmove', function (e) {
+        if (e.touches && e.touches.length > 1) e.preventDefault();
+      }, { passive: false });
+    </script>
+    <script type="module" crossorigin src="./assets/gm-Cz1GY7bc.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/gm-V67CZaJZ.css">
   </head>
   <body>
     <div id="root"></div>

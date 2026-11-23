@@ -311,13 +311,15 @@ function createStyles() {
 
     /* ── Status Rolls Panel ───────────────────────────────────────────── */
     .chud-status-rolls { margin-top: 4px; display: flex; flex-direction: column; gap: 8px; }
-    .status-roll-header { display: flex; gap: 6px; padding: 0 2px; }
+    .status-roll-header { display: flex; flex-direction: column; gap: 2px; padding: 0 2px; }
+    .status-roll-header-top { display: flex; gap: 6px; }
+    .status-roll-header-bottom { display: flex; gap: 6px; }
     .status-roll-header span { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(248,250,252,0.4); font-weight: 600; }
-    .status-roll-header span.col-dir { flex: 11 1 0; text-align: center; }
+    .status-roll-header span.col-dir { flex: 13 1 0; text-align: center; }
     .status-roll-header span.col-name { flex: 26 1 0; }
-    .status-roll-header span.col-effect { flex: 42 1 0; }
+    .status-roll-header span.col-effect { flex: 1 1 0; }
     .status-roll-header span.col-value { flex: 22 1 0; text-align: center; }
-    .status-roll-header span.col-clear { flex: 10 1 0; text-align: center; }
+    .status-roll-header span.col-clear { flex: 0 0 56px; text-align: center; }
     .status-roll-rows { display: flex; flex-direction: column; gap: 6px; }
     .status-roll-row { display: flex; flex-direction: column; gap: 4px; position: relative; }
     /* Marks a freshly-sent roll as "new" until the player names it, instead
@@ -330,6 +332,7 @@ function createStyles() {
       50% { box-shadow: 0 0 14px rgba(255,212,59,0.45); }
     }
     .status-roll-row-main { display: flex; gap: 6px; align-items: stretch; }
+    .status-roll-row-bottom { display: flex; gap: 6px; align-items: stretch; margin-top: 2px; }
     .status-roll-name-wrap { position: relative; flex: 26 1 0; min-width: 0; }
     .status-roll-name-input { width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 7px 8px; font-size: 16px; color: #e9f0ff; outline: none; }
     .status-roll-name-input:focus { border-color: rgba(61,232,192,0.45); }
@@ -337,15 +340,16 @@ function createStyles() {
     .status-roll-suggestion { padding: 8px 10px; font-size: 11px; color: #e9f0ff; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.06); }
     .status-roll-suggestion:last-child { border-bottom: none; }
     .status-roll-suggestion:hover { background: rgba(61,232,192,0.16); }
-    .status-roll-effect { flex: 42 1 0; min-width: 0; box-sizing: border-box; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 7px 8px; font-size: 16px; color: rgba(248,250,252,0.8); outline: none; line-height: 1.25; }
+    .status-roll-effect { flex: 1 1 0; min-width: 0; box-sizing: border-box; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 7px 8px; font-size: 16px; color: rgba(248,250,252,0.8); outline: none; line-height: 1.25; }
     .status-roll-effect[data-readonly="1"] { color: rgba(248,250,252,0.55); font-style: italic; }
     .status-roll-effect:focus { border-color: rgba(61,232,192,0.3); }
     .status-roll-value-wrap { flex: 22 1 0; display: flex; align-items: center; justify-content: center; gap: 4px; position: relative; }
     .status-roll-value-btn { width: 32px; height: 32px; flex-shrink: 0; border-radius: 6px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.07); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .status-roll-value-btn:active { transform: scale(0.94); }
     .status-roll-value { min-width: 20px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 800; color: #6ac7ff; font-size: 12px; cursor: pointer; }
-    .status-roll-value-input { width: 2.6em; min-width: 20px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 800; color: #6ac7ff; font-size: 16px; background: rgba(0,0,0,0.3); border: 1px solid rgba(106,199,255,0.5); border-radius: 4px; }
-    .status-roll-clear { flex: 8.5 1 0; min-width: 26px; border-radius: 8px; border: 1px solid rgba(239,68,68,0.4); background: rgba(239,68,68,0.1); color: #f87171; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+    .status-roll-value-input { width: 3.2em; min-width: 28px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 800; color: #6ac7ff; font-size: 16px; background: rgba(0,0,0,0.3); border: 1px solid rgba(106,199,255,0.5); border-radius: 4px; -moz-appearance: textfield; }
+    .status-roll-value-input::-webkit-outer-spin-button, .status-roll-value-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .status-roll-clear { flex: 0 0 56px; min-width: 56px; border-radius: 8px; border: 1px solid rgba(239,68,68,0.4); background: rgba(239,68,68,0.1); color: #f87171; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
     .status-roll-clear-progress { position: absolute; inset: 0; background: rgba(239,68,68,0.4); width: 0%; pointer-events: none; }
     .status-roll-clear-icon { position: relative; z-index: 1; }
     .status-roll-add { align-self: flex-start; margin-top: 2px; padding: 7px 14px; border-radius: 8px; border: 1px dashed rgba(255,255,255,0.26); background: transparent; color: rgba(248,250,252,0.65); font-size: 10px; cursor: pointer; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -854,7 +858,7 @@ function buildStatusRollsPanel() {
 
   const header = document.createElement('div')
   header.className = 'status-roll-header'
-  header.innerHTML = '<span class="col-dir">Dir</span><span class="col-name">Name</span><span class="col-effect">Effect</span><span class="col-value">Set Roll</span><span class="col-clear">Clear</span>'
+  header.innerHTML = '<div class="status-roll-header-top"><span class="col-dir">Dir</span><span class="col-name">Name</span><span class="col-value">Set Roll</span></div><div class="status-roll-header-bottom"><span class="col-effect">Effect</span><span class="col-clear">Clear</span></div>'
   container.appendChild(header)
 
   const rowsWrap = document.createElement('div')
@@ -1349,42 +1353,28 @@ function buildStatusRollsPanel() {
       minus.className = 'status-roll-value-btn'
       minus.textContent = '-'
       minus.setAttribute('data-touch-blocker-ignore', '')
-      const val = document.createElement('span')
-      val.className = 'status-roll-value'
-      val.textContent = String(row.roll)
+      // Always-visible typeable field (handbook v12 p51-adjacent UX request):
+      // the player can type the Set value directly instead of only
+      // stepping it one at a time with -/+, same as the body-level Save
+      // modal and the HUD HP card's direct-entry pattern.
+      const val = document.createElement('input')
+      val.type = 'number'
+      val.inputMode = 'numeric'
+      val.className = 'status-roll-value-input'
+      val.min = '0'
+      val.max = String(STATUS_ROLL_MAX)
+      val.value = String(row.roll)
       val.setAttribute('data-touch-blocker-ignore', '')
-      val.title = 'Tap to type the value directly'
-      // Tapping the value swaps it for a direct-entry number field (same
-      // idea as the HUD HP card) — lets a player type what they rolled at
-      // the table instead of stepping -/+ one at a time. Also opened
-      // automatically for a row an Engram's No Dice Mode "Play" just
-      // created (row.openValueEntry) — the player still has to type what
-      // they actually rolled at the table.
-      const openValueInput = () => {
-        const input = document.createElement('input')
-        input.type = 'number'
-        input.inputMode = 'numeric'
-        input.className = 'status-roll-value-input'
-        input.min = '0'
-        input.max = String(STATUS_ROLL_MAX)
-        input.value = String(row.roll)
-        input.setAttribute('data-touch-blocker-ignore', '')
-        const commit = () => {
-          row.roll = clampStatusRoll(Math.round(Number(input.value)))
-          val.textContent = String(row.roll)
-          persist()
-          if (input.parentNode) input.replaceWith(val)
-        }
-        input.addEventListener('blur', commit)
-        input.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') input.blur()
-          if (e.key === 'Escape') { if (input.parentNode) input.replaceWith(val) }
-        })
-        val.replaceWith(input)
-        input.focus()
-        input.select()
+      val.title = 'Type the Set value directly'
+      const commitVal = () => {
+        row.roll = clampStatusRoll(Math.round(Number(val.value)))
+        val.value = String(row.roll)
+        persist()
       }
-      val.addEventListener('click', openValueInput)
+      val.addEventListener('blur', commitVal)
+      val.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') val.blur()
+      })
       const plus = document.createElement('button')
       plus.className = 'status-roll-value-btn'
       plus.textContent = '+'
@@ -1392,12 +1382,12 @@ function buildStatusRollsPanel() {
 
       minus.addEventListener('click', () => {
         row.roll = clampStatusRoll(row.roll - 1)
-        val.textContent = String(row.roll)
+        val.value = String(row.roll)
         persist()
       })
       plus.addEventListener('click', () => {
         row.roll = clampStatusRoll(row.roll + 1)
-        val.textContent = String(row.roll)
+        val.value = String(row.roll)
         persist()
       })
 
@@ -1409,7 +1399,7 @@ function buildStatusRollsPanel() {
         row.openValueEntry = false
         persist()
         // Deferred so the row is actually in the DOM first.
-        setTimeout(openValueInput, 0)
+        setTimeout(() => { val.focus(); val.select() }, 0)
       }
 
       if (clearedRowIds.has(row.id)) {
@@ -1488,15 +1478,21 @@ function buildStatusRollsPanel() {
         clearBtn.addEventListener(evt, clearHold)
       })
 
+      // Two rows (less cramped than one, handbook UX request): DIR, Name
+      // and Set on top; Effect and Clear below.
       const mainRow = document.createElement('div')
       mainRow.className = 'status-roll-row-main'
       mainRow.appendChild(dirBtn)
       mainRow.appendChild(nameWrap)
-      mainRow.appendChild(effectInput)
       mainRow.appendChild(valueWrap)
-      mainRow.appendChild(clearBtn)
+
+      const bottomRow = document.createElement('div')
+      bottomRow.className = 'status-roll-row-bottom'
+      bottomRow.appendChild(effectInput)
+      bottomRow.appendChild(clearBtn)
 
       rowEl.appendChild(mainRow)
+      rowEl.appendChild(bottomRow)
       rowsWrap.appendChild(rowEl)
     })
     addBtn.disabled = rows.length >= STATUS_ROLL_MAX_ROWS

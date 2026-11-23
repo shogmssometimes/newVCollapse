@@ -2350,6 +2350,24 @@ button.hub-card:not(:disabled):active {
   color: rgba(248, 250, 252, 0.75);
 }
 
+.engram-lock-btn {
+  align-self: flex-start;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(248, 250, 252, 0.8);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.engram-lock-btn.locked {
+  border-color: rgba(255, 180, 60, 0.5);
+  background: rgba(255, 180, 60, 0.12);
+  color: #ffd43b;
+}
+
 .engram-capacity-readout.over-capacity {
   color: rgba(255, 100, 100, 0.95);
   font-weight: 700;

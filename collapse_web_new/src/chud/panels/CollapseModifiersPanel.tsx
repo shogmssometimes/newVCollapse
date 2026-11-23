@@ -24,7 +24,7 @@ function ModifierField({
   const safe = Number.isFinite(value) ? value : 0;
   return (
     <label className="collapse-mod-field">
-      <span>{label}</span>
+      <span className={safe !== 0 ? "collapse-mod-field-label-active" : undefined}>{label}</span>
       <div className="collapse-mod-field-row">
         <button
           type="button"

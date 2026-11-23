@@ -797,10 +797,9 @@ export default function GearPage({
           aria-hidden="true"
           style={{
             position: 'fixed',
-            top: 12,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 1000,
+            top: 'max(12px, env(safe-area-inset-top))',
+            right: 'max(12px, env(safe-area-inset-right))',
+            zIndex: 10050,
             background: 'rgba(10,16,28,0.95)',
             border: '1px solid rgba(61,232,192,0.4)',
             borderRadius: 20,

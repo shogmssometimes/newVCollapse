@@ -14,20 +14,20 @@
     <meta name="theme-color" content="#0f0f0f" />
     <title>Collapse Full Build</title>
     <script>
-      // Belt-and-suspenders pinch-to-zoom lockout: the viewport meta's
-      // user-scalable=no/maximum-scale=1 above is ignored by some Safari
-      // versions, so also swallow the two actual gesture mechanisms —
-      // Safari's non-standard gesturestart/change/end events, and any
-      // 2+ finger touchmove (the generic pinch trigger everywhere else).
-      // Scoped to >1 touch only, so normal single-finger swipe/drag/hold
-      // gestures elsewhere in the app are untouched.
+      // Pinch-to-zoom lockout: the viewport meta's user-scalable=no/
+      // maximum-scale=1 above is ignored by some Safari versions, so also
+      // swallow Safari's non-standard gesturestart/gesturechange events,
+      // which fire exclusively on an actual 2-finger pinch and never
+      // interfere with single-finger gestures. (An earlier version also
+      // registered a 2+-finger touchmove preventDefault here, but any
+      // non-passive touchmove listener on the document made the browser
+      // treat every touchmove synchronously, which broke swipe-to-cycle/
+      // long-press gestures — e.g. the HUD's Engram Q and Gear Q — on
+      // mobile, so it was removed.)
       document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
       document.addEventListener('gesturechange', function (e) { e.preventDefault(); });
-      document.addEventListener('touchmove', function (e) {
-        if (e.touches && e.touches.length > 1) e.preventDefault();
-      }, { passive: false });
     </script>
-    <script type="module" crossorigin src="/newVCollapse/assets/main-CHac8obf.js"></script>
+    <script type="module" crossorigin src="/newVCollapse/assets/main-9TbxFqMn.js"></script>
     <link rel="modulepreload" crossorigin href="/newVCollapse/assets/src-DkAUGn-S.js">
     <link rel="stylesheet" crossorigin href="/newVCollapse/assets/src-V67CZaJZ.css">
     <link rel="stylesheet" crossorigin href="/newVCollapse/assets/main-CyI7rz1E.css">

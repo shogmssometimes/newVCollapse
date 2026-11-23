@@ -324,13 +324,11 @@ function createStyles() {
     .status-roll-row { display: flex; flex-direction: column; gap: 4px; position: relative; }
     /* Marks a freshly-sent roll as "new" until the player names it, instead
        of pre-filling the Name field with placeholder text that had to be
-       deleted every time. */
-    .status-roll-row-new { animation: status-roll-row-new-glow 1.8s ease-in-out infinite; border-radius: 8px; }
+       deleted every time. (Previously an animated pulsing glow — dropped
+       the animation per UX feedback that it was distracting, especially
+       now each row spans two lines; keep only the quiet Name-field border
+       tint as the "needs a name" cue.) */
     .status-roll-row-new .status-roll-name-input { border-color: rgba(255,212,59,0.7); }
-    @keyframes status-roll-row-new-glow {
-      0%, 100% { box-shadow: 0 0 0 rgba(255,212,59,0); }
-      50% { box-shadow: 0 0 14px rgba(255,212,59,0.45); }
-    }
     .status-roll-row-main { display: flex; gap: 6px; align-items: stretch; }
     .status-roll-row-bottom { display: flex; gap: 6px; align-items: stretch; margin-top: 2px; }
     .status-roll-name-wrap { position: relative; flex: 26 1 0; min-width: 0; }

@@ -11,15 +11,18 @@
       ::selection{background:transparent !important;color:inherit !important}
     </style>
     <script>
-      // See index.html for why both the viewport meta and this listener
-      // pair are needed to actually stop pinch-to-zoom everywhere — the
-      // HUD is its own iframe document, so it needs this independently
-      // of the parent page's copy.
+      // See index.html for why the viewport meta + this listener are
+      // needed to stop pinch-to-zoom here — the HUD is its own iframe
+      // document, so it needs this independently of the parent page's
+      // copy. Only Safari's non-standard gesturestart/gesturechange are
+      // used (fire exclusively on an actual 2-finger pinch); an earlier
+      // version also added a 2+-finger touchmove preventDefault here,
+      // but registering ANY non-passive touchmove listener on the HUD's
+      // document made the engine treat every touchmove synchronously,
+      // which broke the Engram Q/Gear Q swipe-to-cycle and long-press
+      // gestures on mobile — removed.
       document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
       document.addEventListener('gesturechange', function (e) { e.preventDefault(); });
-      document.addEventListener('touchmove', function (e) {
-        if (e.touches && e.touches.length > 1) e.preventDefault();
-      }, { passive: false });
     </script>
     <!-- Not processed by Vite — already present in public/chud/ -->
     <script src="./meter-bridge.js"></script>

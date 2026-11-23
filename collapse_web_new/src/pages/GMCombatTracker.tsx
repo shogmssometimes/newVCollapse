@@ -458,7 +458,7 @@ const Counter: React.FC<CounterProps> = ({
               </span>
             )}
             {!!maxModifier && (
-              <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.72rem" }}>({maxModifier > 0 ? "+" : "−"}{Math.abs(maxModifier)})</span>
+              <span style={{ color: "#ff6b6b", fontSize: "0.72rem", fontWeight: 600 }}>({maxModifier > 0 ? "+" : "−"}{Math.abs(maxModifier)})</span>
             )}
           </>
         )}
@@ -493,7 +493,7 @@ const ModStepper: React.FC<{ label: string; value: number; onChange: (v: number)
   const safe = Number.isFinite(value) ? value : 0;
   return (
     <div>
-      <div style={{ fontSize: "0.68rem", color: "var(--muted)", marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: "0.68rem", color: safe !== 0 ? "#ff6b6b" : "var(--muted)", marginBottom: 3 }}>{label}</div>
       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
         <button
           type="button"
@@ -589,7 +589,7 @@ const WtControl: React.FC<{ base: number; modifier: number; onBaseChange: (v: nu
             {effective}
           </span>
         )}
-        {modifier !== 0 && <span style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.72rem" }}>({modifier > 0 ? "+" : "−"}{Math.abs(modifier)})</span>}
+        {modifier !== 0 && <span style={{ color: "#ff6b6b", fontSize: "0.72rem", fontWeight: 600 }}>({modifier > 0 ? "+" : "−"}{Math.abs(modifier)})</span>}
       </div>
       <div style={{ display: "flex", gap: 4 }}>
         <button
@@ -1641,11 +1641,18 @@ const RunCard: React.FC<RunCardProps> = ({ c, index, total, onChange, onPrev, on
             {(typeof c.fumbleNumber === "number" || (c.modifiers?.wt ?? 0) !== 0 || (c.modifiers?.totalAttackDefense ?? 0) !== 0 || (c.modifiers?.totalAll ?? 0) !== 0) && (
               <div style={{ fontSize: "0.68rem", color: "var(--muted)", marginTop: 6 }}>
                 {[
-                  typeof c.fumbleNumber === "number" ? `Fumble ${-Math.abs(c.fumbleNumber)}` : null,
-                  noDice ? `WT ${effWt(c)}` : null,
-                  (c.modifiers?.totalAttackDefense ?? 0) !== 0 ? `Attack/Defense ${c.modifiers!.totalAttackDefense! > 0 ? "+" : "−"}${Math.abs(c.modifiers!.totalAttackDefense!)}` : null,
-                  (c.modifiers?.totalAll ?? 0) !== 0 ? `Every Roll ${c.modifiers!.totalAll! > 0 ? "+" : "−"}${Math.abs(c.modifiers!.totalAll!)}` : null,
-                ].filter(Boolean).join(" · ")}
+                  typeof c.fumbleNumber === "number" ? { text: `Fumble ${-Math.abs(c.fumbleNumber)}`, modified: false } : null,
+                  noDice ? { text: `WT ${effWt(c)}`, modified: (c.modifiers?.wt ?? 0) !== 0 } : null,
+                  (c.modifiers?.totalAttackDefense ?? 0) !== 0 ? { text: `Attack/Defense ${c.modifiers!.totalAttackDefense! > 0 ? "+" : "−"}${Math.abs(c.modifiers!.totalAttackDefense!)}`, modified: true } : null,
+                  (c.modifiers?.totalAll ?? 0) !== 0 ? { text: `Every Roll ${c.modifiers!.totalAll! > 0 ? "+" : "−"}${Math.abs(c.modifiers!.totalAll!)}`, modified: true } : null,
+                ]
+                  .filter((part): part is { text: string; modified: boolean } => part !== null)
+                  .map((part, i, arr) => (
+                    <React.Fragment key={part.text}>
+                      <span style={part.modified ? { color: "#ff6b6b" } : undefined}>{part.text}</span>
+                      {i < arr.length - 1 ? " · " : null}
+                    </React.Fragment>
+                  ))}
               </div>
             )}
           </div>

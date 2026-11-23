@@ -7,15 +7,14 @@
     <meta name="theme-color" content="#0f0f0f" />
     <title>Collapse GM Companion</title>
     <script>
-      // See index.html for why both the viewport meta and this listener
-      // pair are needed to actually stop pinch-to-zoom everywhere.
+      // See index.html for why the viewport meta + this listener are
+      // needed to stop pinch-to-zoom (and why the touchmove half of the
+      // old version was removed — it broke single-finger swipe/hold
+      // gestures).
       document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
       document.addEventListener('gesturechange', function (e) { e.preventDefault(); });
-      document.addEventListener('touchmove', function (e) {
-        if (e.touches && e.touches.length > 1) e.preventDefault();
-      }, { passive: false });
     </script>
-    <script type="module" crossorigin src="./assets/gm-Cz1GY7bc.js"></script>
+    <script type="module" crossorigin src="./assets/gm--OqF2KZ8.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/gm-V67CZaJZ.css">
   </head>
   <body>

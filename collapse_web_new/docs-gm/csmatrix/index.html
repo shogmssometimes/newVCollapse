@@ -6,15 +6,14 @@
   <title>CS Matrix — Campaign Support Matrix</title>
   <link rel="stylesheet" href="styles.css" />
   <script>
-    // Disables pinch-to-zoom across the app (standalone static subapp, so
-    // it needs its own copy of the same guard used by index.html/gm.html/
-    // chud.html — see index.html for why both the viewport meta and this
-    // listener pair are needed).
+    // Disables pinch-to-zoom (standalone static subapp, so it needs its
+    // own copy of the same guard used by index.html/gm.html/chud.html —
+    // see index.html for why both the viewport meta and this listener
+    // are needed, and why only gesturestart/gesturechange are used here
+    // rather than also swallowing 2+-finger touchmove, which broke
+    // single-finger swipe/drag gestures elsewhere in the app).
     document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
     document.addEventListener('gesturechange', function (e) { e.preventDefault(); });
-    document.addEventListener('touchmove', function (e) {
-      if (e.touches && e.touches.length > 1) e.preventDefault();
-    }, { passive: false });
   </script>
 </head>
 <body class="theme-dark force-mobile-layout">
